@@ -11,11 +11,39 @@ from the ticket content and extracted logs.
 
 ## Architecture
 
-*(Diagram coming Day 3)*
+                        SFR — Smart First Response
+                        LLM Application (Not RAG)
 
-​```
-[Support Ticket] → [LangChain PromptTemplate] → [Amazon Bedrock Claude] → [First Response]
-​```
+   Support Engineer                                    Amazon Bedrock
+       │                                                    │
+       │  New Support Ticket                                │
+       ▼                                                    │
+ ┌─────────────┐    ┌──────────────────┐    ┌──────────────┴──────────┐
+ │  FastAPI    │───▶│  LangChain LCEL  │───▶│  Claude 3 Sonnet        │
+ │  POST /api  │    │                  │    │  (claude-3-sonnet-       │
+ │  /generate  │    │  Prompt Template │    │   20240229-v1:0)         │
+ └─────────────┘    │       +          │    └──────────────┬──────────┘
+                    │  ChatBedrock     │                   │
+                    │       +          │    Generated      │
+                    │  StrOutputParser │◀──  Response  ────┘
+                    └──────────────────┘
+                             │
+                             ▼
+                    First Response Delivered
+                    to Support Engineer
+
+Flow:
+  1. Engineer receives new support ticket
+  2. Ticket content sent to FastAPI endpoint
+  3. LangChain formats prompt: system context + ticket content
+  4. ChatBedrock invokes Claude 3 Sonnet on Amazon Bedrock
+  5. StrOutputParser extracts response text
+  6. First response returned to engineer
+
+Key Design Decisions:
+  - No retrieval (not RAG): response generated purely from ticket context + LLM knowledge
+  - LangChain LCEL pipe syntax: prompt | llm | parser
+  - Amazon Bedrock: managed LLM service, no GPU infrastructure to maintain
 
 ## Technology Stack
 
