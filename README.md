@@ -5,9 +5,16 @@
 
 ## Problem Statement
 
-Support engineers spend 5–10 minutes drafting the initial response for every 
-new ticket. SFR eliminates this by generating the first response automatically 
-from the ticket content and extracted logs.
+Support engineers at enterprise companies spend 5–10 minutes drafting the initial 
+response for every new ticket. This time compounds across hundreds of daily tickets.
+
+**Smart First Response System** eliminates this using LangChain and Amazon Bedrock 
+to automatically generate the first customer response from ticket content — 
+reducing initial response time from minutes to seconds.
+
+**This is an LLM application, not a RAG system.** It generates responses from 
+the current ticket content using prompt engineering and LLM inference. It does 
+not retrieve from a knowledge base.
 
 ## Architecture
 
@@ -45,33 +52,51 @@ Key Design Decisions:
   - LangChain LCEL pipe syntax: prompt | llm | parser
   - Amazon Bedrock: managed LLM service, no GPU infrastructure to maintain
 
-## Technology Stack
+## Core Implementation
 
-| Component | Technology |
-|-----------|-----------|
-| LLM Orchestration | LangChain (LCEL) |
-| LLM Provider | Amazon Bedrock (Claude) |
-| API Layer | FastAPI *(coming Week 2)* |
-| Containerisation | Docker *(coming Week 2)* |
-| Language | Python 3.11 |
+The SFR chain is built with LangChain LCEL (LangChain Expression Language):
 
-## Project Status
+```python
+from langchain_aws import ChatBedrock
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 
-🔨 In active development — Week 1
+# Define the prompt
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a professional support engineer writing first responses..."),
+    ("human", "Support Ticket:\n{ticket_content}\n\nGenerate the first response:")
+])
+
+# Configure the LLM
+llm = ChatBedrock(
+    model_id="anthropic.claude-3-sonnet-20240229-v1:0",
+    model_kwargs={"max_tokens": 512, "temperature": 0.3},
+    streaming=True
+)
+
+# Build the chain — the | operator wires the components together
+chain = prompt | llm | StrOutputParser()
+
+# Async invocation for FastAPI (non-blocking)
+response = await chain.ainvoke({"ticket_content": ticket})
+
+# Streaming invocation for real-time token delivery
+async for token in chain.astream({"ticket_content": ticket}):
+    yield token  # deliver each word as it arrives
+```
+
+**Tech Stack**
+
+| Component | Technology | Purpose |
+|-----------|-----------|---------|
+| API Layer | FastAPI (async) | Expose SFR as an HTTP service |
+| LLM Orchestration | LangChain LCEL | Chain prompt → LLM → parser |
+| LLM | Amazon Bedrock (Claude 3 Sonnet) | Generate first responses |
+| Validation | Pydantic | Request/response schema enforcement |
+| Deployment | AWS Lambda / Docker | Serverless or containerised serving |
+````
 
 ## Note
 
 This is an open-source portfolio version. The production system runs at Cleo with enterprise-specific integrations.
 
-## Problem Statement
-
-Support engineers at enterprise companies spend 5–10 minutes drafting the initial 
-response for every new ticket. This time compounds across hundreds of daily tickets.
-
-**Smart First Response System** eliminates this using LangChain and Amazon Bedrock 
-to automatically generate the first customer response from ticket content — 
-reducing initial response time from minutes to seconds.
-
-**This is an LLM application, not a RAG system.** It generates responses from 
-the current ticket content using prompt engineering and LLM inference. It does 
-not retrieve from a knowledge base.
