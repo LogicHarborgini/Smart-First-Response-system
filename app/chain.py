@@ -3,9 +3,6 @@ LangChain LCEL chain for Smart First Response.
 
 This is the core of SFR:
   prompt | llm | parser
-
-Clean-room implementation — original prompts, original architecture.
-Does not reproduce any company-specific prompts or configurations.
 """
 
 from __future__ import annotations
@@ -23,7 +20,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# System prompt — original, clean-room
+# Prompts
 # ─────────────────────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = """You are a professional enterprise support engineer writing \

@@ -1,7 +1,7 @@
 """
 FastAPI application for Smart First Response.
 
-Clean-room implementation of an LLM-powered support ticket response generator.
+An LLM-powered support ticket response generator.
 Stack: FastAPI + LangChain LCEL + Amazon Bedrock (Claude 3 Sonnet)
 """
 

@@ -1,4 +1,3 @@
-
 """
 Pydantic models for the SFR API.
 
@@ -27,9 +26,12 @@ class TicketPriority(str, Enum):
 
 class SFRRequest(BaseModel):
     """Request body for POST /api/v1/generate-response."""
-    
+
     ticket_id: str = Field(..., description="Unique ticket identifier", min_length=1)
-    content: str = Field(..., description="Full ticket content", min_length=10)
+    # No min_length here on purpose: the content_must_be_meaningful validator
+    # below strips whitespace first, so it catches "          " which min_length
+    # would let through. A field constraint would pre-empt it.
+    content: str = Field(..., description="Full ticket content")
     priority: TicketPriority = Field(default=TicketPriority.P2)
     customer_name: Optional[str] = Field(default=None)
 
@@ -60,7 +62,7 @@ class SFRRequest(BaseModel):
 
 class SFRResponse(BaseModel):
     """Response body from POST /api/v1/generate-response."""
-    
+
     ticket_id: str
     first_response: str
     model_used: str
