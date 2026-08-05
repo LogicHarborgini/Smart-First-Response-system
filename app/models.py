@@ -68,6 +68,9 @@ class SFRResponse(BaseModel):
     model_used: str
     latency_ms: float
     status: str = "success"
+    # LangSmith trace ID for this run. None when tracing is disabled. Returning
+    # it lets a ticket in your own records be matched to its trace afterwards.
+    langsmith_run_id: Optional[str] = Field(default=None)
 
 
 class HealthResponse(BaseModel):

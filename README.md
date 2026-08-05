@@ -100,6 +100,69 @@ async for token in chain.astream({"ticket_content": ticket}):
 | Validation | Pydantic | Request/response schema enforcement |
 | Deployment | AWS Lambda / Docker | Serverless or containerised serving |
 
+## Observability
+
+Every chain execution is traced via LangSmith. Copy `.env.example` to `.env` and
+set:
+
+```
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=lsv2_pt_your_key_here
+LANGSMITH_PROJECT=sfr-support-assistant
+```
+
+Set `LANGSMITH_TRACING=false` to disable tracing without removing the key. The
+app runs identically either way — `langsmith_run_id` in the response is simply
+`null`.
+
+Each trace carries:
+
+| Field | Purpose |
+|-------|---------|
+| `run_name` = `SFR-<ticket_id>` | Identifies the trace at a glance instead of `RunnableSequence` |
+| metadata: ticket ID, priority, customer, model ID, app version | Filter and group traces |
+| tags: `priority:P1`, `sfr` | Saved views for critical tickets |
+| `preprocess-ticket` span | Separates preprocessing cost from model latency |
+
+The API returns the trace ID as `langsmith_run_id`, so a ticket in your own
+records can be matched back to the exact model call that produced its response.
+
+Generate sample traces:
+
+```bash
+python run_sfr_traces.py
+```
+
+## Evaluation
+
+Two harnesses, run from the project root:
+
+```bash
+python -m evals.simple_eval    # deterministic checks, no API key or judge model
+python -m evals.sfr_eval       # LangSmith golden dataset + LLM-as-judge
+```
+
+`simple_eval` is the regression gate. It scores responses against deterministic
+criteria and writes `evals/baseline_results.json`; rerun it after any prompt or
+model change and it reports whether the score moved. Criteria that only apply to
+some tickets are skipped rather than failed — urgency language is required on P1
+and not expected on P3.
+
+`sfr_eval` handles the judgement calls deterministic checks cannot: whether a
+response is genuinely specific to the ticket, whether its urgency matches the
+priority, and whether it resists diagnosing the problem in a first response.
+
+The judge runs at temperature 0 on whichever provider `LLM_PROVIDER` resolves to
+— never the OpenAI default that `LangChainStringEvaluator` would pull in, so no
+OpenAI credentials are needed. Judge strength varies by provider, and so does how
+much the scores are worth:
+
+| Provider | Judge | Scores mean |
+|---|---|---|
+| `bedrock` | Claude 3 Haiku (`JUDGE_MODEL_ID`) | Trustworthy — use as the quality gate |
+| `ollama` | Local model (`JUDGE_OLLAMA_MODEL`) | Indicative only; a 3B model follows rubrics loosely and often breaks the JSON contract |
+| `fake` | Canned verdict | Nothing — proves the harness runs, no more |
+
 ## Note
 
 A reference implementation built to explore production patterns in support
