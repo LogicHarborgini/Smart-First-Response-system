@@ -1,0 +1,53 @@
+{
+  "overall_score": 1.0,
+  "test_cases": 3,
+  "results": [
+    {
+      "ticket_id": "EVAL-001",
+      "score": 1.0,
+      "passed": [
+        "acknowledges_ticket",
+        "sets_expectation",
+        "signals_urgency",
+        "respects_length_guidance",
+        "not_too_short",
+        "not_too_long"
+      ],
+      "failed": [],
+      "skipped": [],
+      "error": null
+    },
+    {
+      "ticket_id": "EVAL-002",
+      "score": 1.0,
+      "passed": [
+        "acknowledges_ticket",
+        "sets_expectation",
+        "respects_length_guidance",
+        "not_too_short",
+        "not_too_long"
+      ],
+      "failed": [],
+      "skipped": [
+        "signals_urgency"
+      ],
+      "error": null
+    },
+    {
+      "ticket_id": "EVAL-003",
+      "score": 1.0,
+      "passed": [
+        "acknowledges_ticket",
+        "sets_expectation",
+        "respects_length_guidance",
+        "not_too_short",
+        "not_too_long"
+      ],
+      "failed": [],
+      "skipped": [
+        "signals_urgency"
+      ],
+      "error": null
+    }
+  ]
+}
