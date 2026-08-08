@@ -168,6 +168,79 @@ def build_chat_model(
     return FakeListChatModel(responses=fake_responses or _FAKE_RESPONSES)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Retry
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Three attempts is the AWS-recommended starting point for API retries. Beyond
+# that you are holding an HTTP request open long enough that the caller times out
+# anyway, and the exponential backoff means attempt four alone waits ~4s.
+RETRY_ATTEMPTS = 3
+
+
+def _transient_exception_types(provider: str) -> tuple[type[BaseException], ...]:
+    """
+    Exceptions worth a second attempt on this provider.
+
+    Retrying everything is the trap: a KeyError from a missing prompt variable or
+    a ValueError from bad input will fail identically three times, so the only
+    thing a blanket retry buys is a slower error and a masked bug. The types below
+    are the ones a retry can actually resolve.
+
+    Imports are local because the provider packages are optional — an
+    Ollama-only install has no botocore, and vice versa.
+
+    One honest limitation on Bedrock: botocore raises ClientError for throttling
+    (retryable) and for AccessDenied (not), and with_retry filters by exception
+    type only — it takes no predicate to inspect the error code. So a
+    misconfigured IAM role costs three attempts, roughly three seconds, before
+    the real error surfaces. That is the cheaper side of the trade: the
+    alternative is not retrying throttles at all.
+    """
+    if provider == "bedrock":
+        from botocore.exceptions import ClientError
+        from botocore.exceptions import ConnectionError as BotoConnectionError
+
+        # BotoConnectionError is the base for EndpointConnectionError,
+        # ConnectTimeoutError and ReadTimeoutError.
+        return (ClientError, BotoConnectionError)
+
+    if provider == "ollama":
+        import httpx
+
+        # httpx.HTTPError covers ConnectError and the timeout family — the way a
+        # local Ollama daemon actually fails: not running yet, or still loading a
+        # model into memory. ollama.ResponseError is deliberately excluded; it is
+        # also raised for "model not found", which no amount of retrying fixes.
+        return (httpx.HTTPError, ConnectionError, TimeoutError)
+
+    # fake: nothing to be transient about.
+    return ()
+
+
+def with_transient_retry(runnable: Runnable) -> Runnable:
+    """
+    Wrap a runnable so transient provider failures are retried with backoff.
+
+    Exponential backoff with jitter — 1s, 2s, 4s plus a random offset. The jitter
+    matters under load: without it, every request throttled in the same second
+    retries in the same second, and the burst that caused the throttle is
+    reproduced exactly.
+
+    Applied to the model step alone rather than the whole chain, so a parser
+    failure does not pay for another model call.
+    """
+    retry_on = _transient_exception_types(resolve_provider())
+    if not retry_on:
+        return runnable
+
+    return runnable.with_retry(
+        retry_if_exception_type=retry_on,
+        wait_exponential_jitter=True,
+        stop_after_attempt=RETRY_ATTEMPTS,
+    )
+
+
 @lru_cache(maxsize=1)
 def get_sfr_chain() -> Runnable:
     """
@@ -180,7 +253,7 @@ def get_sfr_chain() -> Runnable:
     Returns
     -------
     Runnable
-        A LangChain LCEL chain: prompt | llm | parser
+        A LangChain LCEL chain: prompt | llm.with_retry(...) | parser
     """
     logger.info(f"Building SFR chain with model: {active_model_id()}")
 
@@ -189,7 +262,7 @@ def get_sfr_chain() -> Runnable:
         ("human", HUMAN_TEMPLATE),
     ])
 
-    llm = build_chat_model()
+    llm = with_transient_retry(build_chat_model())
 
     parser = StrOutputParser()
 

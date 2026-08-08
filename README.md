@@ -56,6 +56,7 @@ not retrieve from a knowledge base.
 - LangChain LCEL pipe syntax: `prompt | llm | parser`
 - Amazon Bedrock: managed LLM service, no GPU infrastructure to maintain
 - Credentials resolved from the boto3 credential chain, never from app config
+- Transient provider failures retried with exponential backoff and jitter (see Reliability)
 
 ## Core Implementation
 
@@ -99,6 +100,45 @@ async for token in chain.astream({"ticket_content": ticket}):
 | LLM | Amazon Bedrock (Claude 3 Sonnet) | Generate first responses |
 | Validation | Pydantic | Request/response schema enforcement |
 | Deployment | AWS Lambda / Docker | Serverless or containerised serving |
+
+## Reliability
+
+Bedrock returns `ThrottlingException` under load. Without a retry that is a 503
+to the support engineer, at exactly the moment ticket volume is highest — so the
+model step is wrapped in three attempts with exponential backoff and jitter:
+
+```python
+chain = prompt | llm.with_retry(
+    retry_if_exception_type=(ClientError, BotoConnectionError),
+    wait_exponential_jitter=True,   # 1s, 2s + random offset
+    stop_after_attempt=3,
+) | parser
+```
+
+Two deliberate choices:
+
+- **Only the model step is wrapped.** A parser failure is not worth another call
+  to Bedrock.
+- **Only transient exception types are retried.** A `KeyError` from a missing
+  prompt variable fails identically three times, so a blanket retry buys nothing
+  but a slower error and a hidden bug. The retryable set is chosen per provider:
+  botocore errors on Bedrock, connection and timeout errors on Ollama, none on
+  `fake`.
+
+Jitter is what makes this safe under concurrency. Without it every request
+throttled in the same second retries in the same second, reproducing the burst
+that caused the throttle.
+
+One limitation worth stating: botocore raises `ClientError` for throttling
+(retryable) and for `AccessDenied` (not), and `with_retry` filters on exception
+type with no hook for the error code. A misconfigured IAM role therefore costs
+three attempts before the real error surfaces — the cheaper side of the trade,
+since the alternative is not retrying throttles at all.
+
+The eval judge in `evals/sfr_eval.py` uses the same policy. It fires once per
+criterion per example, making it the most-throttled model in the project, and a
+throttled judge does not score 0 — it errors the evaluator and leaves a hole in
+the experiment.
 
 ## Observability
 

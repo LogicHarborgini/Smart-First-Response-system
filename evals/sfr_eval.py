@@ -43,6 +43,7 @@ from app.chain import (
     ainvoke_sfr_traced,
     build_chat_model,
     resolve_provider,
+    with_transient_retry,
 )
 from app.config import settings
 
@@ -225,7 +226,10 @@ def _judge_chain():
         fake_responses=_FAKE_VERDICT,
         streaming=False,
     )
-    return JUDGE_PROMPT | llm | StrOutputParser()
+    # The judge fires once per criterion per example, so it is the most-throttled
+    # model in the harness — and a throttled judge does not score 0, it errors the
+    # evaluator and leaves a hole in the experiment. Same retry policy as the chain.
+    return JUDGE_PROMPT | with_transient_retry(llm) | StrOutputParser()
 
 
 def _parse_verdict(raw: str) -> tuple[int, str]:
