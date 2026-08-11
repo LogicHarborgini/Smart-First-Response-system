@@ -1,7 +1,31 @@
 # Smart-First-Response-system
 
+![CI/CD](https://github.com/LogicHarborgini/Smart-First-Response-system/actions/workflows/ci-cd.yml/badge.svg)
+
 > LLM application that automatically generates the first customer response
 > for enterprise support tickets using LangChain and Amazon Bedrock.
+
+## Live Demo
+
+**Interactive API docs:**
+https://vis-smart-first-response-system-production.up.railway.app/docs
+
+No setup required — open the Swagger UI, click *Try it out*, and send a real
+ticket through a live LLM.
+
+```bash
+curl -X POST https://vis-smart-first-response-system-production.up.railway.app/api/v1/generate-response \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ticket_id": "TKT-001",
+    "content": "EDI 850 purchase orders stopped processing. 47 orders backed up since 14:30 UTC.",
+    "priority": "P1",
+    "customer_name": "Acme Corp"
+  }'
+```
+
+The deployed demo runs on Groq rather than Bedrock — see [Deployment](#deployment)
+for why, and for how the provider is selected without a code change.
 
 ## Problem Statement
 
@@ -108,7 +132,65 @@ async for token in chain.astream({"ticket_content": ticket}):
 | LLM Orchestration | LangChain LCEL | Chain prompt → LLM → parser |
 | LLM | Amazon Bedrock (Claude 3 Sonnet) | Generate first responses |
 | Validation | Pydantic | Request/response schema enforcement |
-| Deployment | AWS Lambda / Docker | Serverless or containerised serving |
+| Deployment | Docker → Railway | Containerised serving, deployed from `main` |
+
+## Deployment
+
+| | Local dev | Demo (deployed) | Production |
+|---|---|---|---|
+| LLM provider | Ollama (`llama3.2`) | Groq (`llama-3.1-8b-instant`) | AWS Bedrock (Claude 3 Sonnet) |
+| Selected by | `auto` — boto3 credential probe | `LLM_PROVIDER=groq` | AWS credentials present |
+| Runtime | uvicorn | Railway (Docker) | ECS / K8s |
+
+Same codebase, same Dockerfile, different environment variables. Provider
+selection lives in `resolve_provider()`: an explicit `LLM_PROVIDER` always wins,
+and `auto` probes for credentials through boto3 itself rather than checking
+`AWS_*` environment variables — because `aws configure` writes to
+`~/.aws/credentials` and sets no env vars, so an env-var check reports "no AWS"
+on the most common local setup.
+
+The deployed demo sets `LLM_PROVIDER=groq` explicitly rather than relying on
+`auto`. With no credentials present, boto3 walks its full credential chain down
+to the EC2 instance-metadata endpoint, which does not exist on Railway — so
+`auto` both slows startup and silently selects a provider that cannot serve a
+request. Groq itself is the right fit for a public demo: hosted inference on a
+free tier, no AWS account, and no GPU to pay for.
+
+A fourth provider, `fake`, returns canned responses with no model call at all.
+It exists so the tracing and eval harnesses — and CI — can run with no network
+access, no API cost, and no flakiness from a third-party model being slow or
+rate-limited.
+
+**Container:** multi-stage build, 563MB. Build tooling (`build-essential`) lives
+only in the builder stage and never reaches the runtime image. The container runs
+as a non-root user (`appuser`, uid 1000) and declares a `HEALTHCHECK` so the
+platform routes traffic only once the app actually responds. `CMD` uses
+`exec uvicorn` so uvicorn becomes PID 1 and receives `SIGTERM` directly —
+without it the shell swallows the signal and in-flight requests are severed on
+every redeploy.
+
+Local stack:
+
+```bash
+docker compose up --build      # service on :8000, health check every 30s
+docker compose down
+```
+
+## CI/CD
+
+```
+ruff check  →  pytest (80% coverage gate)  →  Docker build verification
+```
+
+Railway deploys on push to `main`. GitHub Actions gates the code; Railway ships
+it — one deploy trigger, not two.
+
+Tests run against the `fake` provider, so CI needs no API keys and makes no
+network calls. Both `ruff` and its rule set are pinned (`ruff.toml`,
+`RUFF_VERSION`) for the same reason `requirements.txt` carries version ceilings:
+a new release of a tool must not be able to fail the build on its own. CI runs
+Python 3.12 to match the container's base image rather than whatever version is
+installed locally.
 
 ## Reliability
 
