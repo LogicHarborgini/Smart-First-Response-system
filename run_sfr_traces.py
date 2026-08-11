@@ -77,7 +77,10 @@ SAMPLE_TICKETS = [
 async def main() -> None:
     for ticket in SAMPLE_TICKETS:
         ticket_id = ticket["ticket_id"]
-        print(f"→ {ticket_id} ({ticket['priority']})")
+        # ASCII arrow deliberately. A Windows console defaults to cp1252, which
+        # has no U+2192, and print() raises UnicodeEncodeError rather than
+        # degrading — a script that dies on its own progress output.
+        print(f"-> {ticket_id} ({ticket['priority']})")
 
         try:
             first_response, run_id = await ainvoke_sfr_traced(

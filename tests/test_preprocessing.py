@@ -35,3 +35,17 @@ def test_format_output_prepends_ticket_reference():
 
     assert result.startswith("Re: Ticket TICK-001\n")
     assert result.endswith("Thank you for reporting this.")
+
+
+def test_format_output_header_survives_a_cp1252_console():
+    """
+    The header used a U+2500 box-drawing rule, which run_sfr_traces.py then
+    printed. A Windows console defaults to cp1252, which has no such character,
+    and print() raises UnicodeEncodeError rather than substituting — so the
+    script died on its own output before reaching the second ticket.
+
+    Only the header is asserted here: the model's response is not ours to
+    constrain, and a real one may legitimately contain a non-ASCII character.
+    """
+    header = format_sfr_output("body text", "TICK-001").split("\n", 2)[1]
+    header.encode("cp1252")

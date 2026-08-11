@@ -56,6 +56,12 @@ def format_sfr_output(raw_response: str, ticket_id: str) -> str:
     Deliberately not @traceable. It is applied by the caller after the SFR run
     has finished, so tracing it would add a root run per ticket that is a
     sibling of the real trace rather than part of it — noise, not observability.
+
+    The rule is ASCII: this function exists to be printed, and a Windows console
+    defaults to cp1252, which has no U+2500 box-drawing character. print() raises
+    UnicodeEncodeError rather than degrading gracefully, so a prettier separator
+    costs the whole script. Non-ASCII stays in comments and docstrings, which are
+    never encoded to the console.
     """
-    header = f"Re: Ticket {ticket_id}\n" + "─" * 40 + "\n"
+    header = f"Re: Ticket {ticket_id}\n" + "-" * 40 + "\n"
     return header + raw_response.strip()
