@@ -16,6 +16,15 @@ reducing initial response time from minutes to seconds.
 the current ticket content using prompt engineering and LLM inference. It does
 not retrieve from a knowledge base.
 
+The companion project
+[past-ticket-knowledge-rag](https://github.com/LogicHarborgini/past-ticket-knowledge-rag)
+is the retrieval case: it answers "how was this fixed before?" by searching
+resolved tickets and grounding its answer in what it finds. The two are
+deliberately separate because the failure modes are not the same — a wrong first
+response is a generation problem and nothing else, while a wrong retrieved answer
+is either bad retrieval or bad generation, and telling those apart drives most of
+the design in that repo.
+
 ## Architecture
 
 ```
@@ -172,6 +181,10 @@ Generate sample traces:
 ```bash
 python run_sfr_traces.py
 ```
+
+See [OBSERVABILITY_NOTES.md](OBSERVABILITY_NOTES.md) for what the traces showed —
+measured offline where that is possible, and left as explicit questions where it
+needs a real provider.
 
 ## Evaluation
 
