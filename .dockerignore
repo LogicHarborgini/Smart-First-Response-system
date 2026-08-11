@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local databases
+*.db
+*.sqlite
+
+# Secrets and environment files
+.env
+.env.*
+*.key
+*.pem
+
+# Development files
+.git/
+.gitignore
+*.md
+tests/
+evals/
+run_sfr_traces.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local build artifacts
+dist/
+build/
+*.egg-info/

@@ -1,0 +1,36 @@
+# docker-compose.yml
+# Local development stack for the SFR service.
+#
+# Values in ${...} are read from .env automatically by Compose.
+# The :- suffix is a default, used when the variable is unset.
+
+services:
+
+  sfr-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sfr-service
+    ports:
+      - "8000:8000"
+    environment:
+      # Provider: fake | groq | ollama | bedrock
+      - LLM_PROVIDER=${LLM_PROVIDER:-fake}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.1-8b-instant}
+      # LangSmith observability
+      - LANGSMITH_TRACING=${LANGSMITH_TRACING:-false}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
+      - LANGSMITH_PROJECT=sfr-support-assistant
+      # App
+      - PORT=8000
+      - APP_VERSION=1.0.0
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped

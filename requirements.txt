@@ -9,6 +9,7 @@ langchain-aws>=1.6,<2
 langchain-core>=1.5,<2
 langchain-community>=0.4,<0.5
 langchain-ollama>=1.1,<2       # local fallback when AWS Bedrock is unavailable
+langchain-groq>=1,<2           # free hosted LLM for the public deployment
 
 # Observability
 langsmith>=0.10,<1

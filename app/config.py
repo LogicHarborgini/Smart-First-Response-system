@@ -48,6 +48,11 @@ class Settings(BaseSettings):
         description="Local Ollama model, used when llm_provider resolves to ollama"
     )
 
+    groq_model: str = Field(
+        default="llama-3.1-8b-instant",
+        description="Groq model, used when llm_provider resolves to groq"
+    )
+
     # API
     app_title: str = Field(default="Smart First Response API")
     app_version: str = Field(default="1.0.0")

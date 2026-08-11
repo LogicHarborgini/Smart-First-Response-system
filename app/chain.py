@@ -34,6 +34,8 @@ first responses to customer support tickets. Your goal is to:
 2. Confirm the ticket has been received and is being investigated
 3. Set realistic expectations for next steps and timeline
 4. Use professional, clear language — no jargon the customer wouldn't understand
+5. Never use bracketed placeholders like [Customer] or [Your Name] — write the
+   response as finished text and sign off as "the Support Team"
 
 Keep the response concise: 3-4 sentences maximum. Do not attempt to diagnose \
 or resolve the issue in the first response — that is the job of the follow-up."""
@@ -92,7 +94,7 @@ def _auto_detect_provider() -> str:
 def resolve_provider() -> str:
     """Decide which provider to use. An explicit setting always wins."""
     configured = settings.llm_provider.strip().lower()
-    if configured in {"bedrock", "ollama", "fake"}:
+    if configured in {"bedrock", "groq", "ollama", "fake"}:
         return configured
     if configured != "auto":
         logger.warning(f"Unknown llm_provider '{configured}' — falling back to auto")
@@ -111,6 +113,8 @@ def active_model_id() -> str:
     provider = resolve_provider()
     if provider == "bedrock":
         return settings.bedrock_model_id
+    if provider == "groq":
+        return f"groq:{settings.groq_model}"
     if provider == "ollama":
         return f"ollama:{settings.ollama_model}"
     return "fake:canned-responses"
@@ -121,6 +125,7 @@ def build_chat_model(
     temperature: float | None = None,
     max_tokens: int | None = None,
     bedrock_model_id: str | None = None,
+    groq_model: str | None = None,
     ollama_model: str | None = None,
     fake_responses: list[str] | None = None,
     streaming: bool = True,
@@ -148,7 +153,18 @@ def build_chat_model(
             model_kwargs={"max_tokens": max_tokens, "temperature": temperature},
             streaming=streaming,   # enables chain.astream()
         )
+    if provider == "groq":
+        from langchain_groq import ChatGroq
 
+        # API key comes from GROQ_API_KEY in the environment.
+        # No streaming flag: ChatGroq streams through .astream() natively.
+        return ChatGroq(
+            model=groq_model or settings.groq_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+    
     if provider == "ollama":
         from langchain_ollama import ChatOllama
 
@@ -204,7 +220,23 @@ def _transient_exception_types(provider: str) -> tuple[type[BaseException], ...]
         # BotoConnectionError is the base for EndpointConnectionError,
         # ConnectTimeoutError and ReadTimeoutError.
         return (ClientError, BotoConnectionError)
+    
+    if provider == "groq":
+        from groq import (
+            APIConnectionError,
+            APITimeoutError,
+            InternalServerError,
+            RateLimitError,
+        )
 
+        # The Groq SDK wraps httpx errors in its own exception types, so an
+        # httpx filter would miss all of these. RateLimitError is the one that
+        # matters on a free tier: 6k requests/day, and a 429 clears on retry.
+        # Deliberately excluded: AuthenticationError and BadRequestError — a bad
+        # key or a bad payload fails identically three times.
+        return (APIConnectionError, APITimeoutError, InternalServerError, RateLimitError)
+
+    
     if provider == "ollama":
         import httpx
 
