@@ -1,0 +1,19 @@
+# Ruff configuration.
+#
+# The rule set is selected explicitly rather than relying on ruff's defaults.
+# Those defaults change between ruff releases, so an unpinned linter can turn a
+# green pipeline red without a single line of application code changing — the
+# same reasoning as the version ceilings in requirements.txt.
+
+target-version = "py312"
+line-length = 100
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes — undefined names, unused imports
+    "I",    # isort — import ordering
+    "UP",   # pyupgrade — modern syntax for the target version
+    "B",    # flake8-bugbear — likely bugs
+    "ISC",  # implicit string concatenation
+]

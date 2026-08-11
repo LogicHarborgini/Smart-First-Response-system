@@ -108,7 +108,9 @@ async def generate_first_response(request: SFRRequest) -> SFRResponse:
         )
     except Exception as e:
         logger.error(f"Chain invocation failed: {e}")
-        raise HTTPException(status_code=503, detail=f"LLM service unavailable: {e}")
+        raise HTTPException(
+            status_code=503, detail=f"LLM service unavailable: {e}"
+        ) from e
 
     latency_ms = round((time.perf_counter() - start) * 1000, 1)
     logger.info(

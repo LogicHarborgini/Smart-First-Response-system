@@ -11,13 +11,12 @@ FastAPI uses these for automatic validation and OpenAPI docs generation.
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator
 
 
-class TicketPriority(str, Enum):
+class TicketPriority(StrEnum):
     """Ticket priority levels — only these values are accepted."""
     P1 = "P1"
     P2 = "P2"
@@ -33,7 +32,7 @@ class SFRRequest(BaseModel):
     # would let through. A field constraint would pre-empt it.
     content: str = Field(..., description="Full ticket content")
     priority: TicketPriority = Field(default=TicketPriority.P2)
-    customer_name: Optional[str] = Field(default=None)
+    customer_name: str | None = Field(default=None)
 
     @field_validator("ticket_id")
     @classmethod
@@ -52,7 +51,10 @@ class SFRRequest(BaseModel):
         "json_schema_extra": {
             "example": {
                 "ticket_id": "tick-12345",
-                "content": "Production database connection timing out since 14:30 UTC. All services affected.",
+                "content": (
+                    "Production database connection timing out since 14:30 UTC. "
+                    "All services affected."
+                ),
                 "priority": "P1",
                 "customer_name": "Acme Corp"
             }
@@ -70,7 +72,7 @@ class SFRResponse(BaseModel):
     status: str = "success"
     # LangSmith trace ID for this run. None when tracing is disabled. Returning
     # it lets a ticket in your own records be matched to its trace afterwards.
-    langsmith_run_id: Optional[str] = Field(default=None)
+    langsmith_run_id: str | None = Field(default=None)
 
 
 class HealthResponse(BaseModel):

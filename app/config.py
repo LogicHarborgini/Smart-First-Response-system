@@ -10,8 +10,8 @@ key to accidentally land in.
 """
 
 from dotenv import load_dotenv
-from pydantic_settings import BaseSettings
 from pydantic import Field
+from pydantic_settings import BaseSettings
 
 # Load .env into os.environ. pydantic-settings reads .env into Settings below,
 # but it does not populate os.environ — and LangSmith tracing reads the

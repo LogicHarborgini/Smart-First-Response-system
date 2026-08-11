@@ -54,17 +54,23 @@ Write the first response:"""
 # responses so the eval criteria have something meaningful to chew on — but eval
 # scores against this provider measure the harness, not the model.
 _FAKE_RESPONSES = [
-    "Thank you for reporting this. We have received your ticket and our "
-    "integration team is investigating with the priority you flagged. To help us "
-    "diagnose it quickly, please share the timestamp of the last successful "
-    "transmission and your trading partner ID. We will update you shortly.",
-    "Thank you for getting in touch. We have received your report and are "
-    "reviewing the affected configuration on our side. Could you confirm which "
-    "endpoints are impacted and when the behaviour started? Our team will come "
-    "back to you with findings.",
-    "Thank you for planning ahead on this. We have received your request and our "
-    "team is confirming the current details. We will send those over to you well "
-    "before your maintenance window. Please let us know if your timeline changes.",
+    (
+        "Thank you for reporting this. We have received your ticket and our "
+        "integration team is investigating with the priority you flagged. To help us "
+        "diagnose it quickly, please share the timestamp of the last successful "
+        "transmission and your trading partner ID. We will update you shortly."
+    ),
+    (
+        "Thank you for getting in touch. We have received your report and are "
+        "reviewing the affected configuration on our side. Could you confirm which "
+        "endpoints are impacted and when the behaviour started? Our team will come "
+        "back to you with findings."
+    ),
+    (
+        "Thank you for planning ahead on this. We have received your request and our "
+        "team is confirming the current details. We will send those over to you well "
+        "before your maintenance window. Please let us know if your timeline changes."
+    ),
 ]
 
 
