@@ -182,8 +182,10 @@ docker compose down
 ruff check  →  pytest (80% coverage gate)  →  Docker build verification
 ```
 
-Railway deploys on push to `main`. GitHub Actions gates the code; Railway ships
-it — one deploy trigger, not two.
+`main` is protected: lint, tests and the Docker build must all pass before a pull
+request can merge. Railway deploys what lands on `main`, so only tested code
+reaches the live service — one deploy trigger, not two, and it fires on merges
+rather than on every push.
 
 Tests run against the `fake` provider, so CI needs no API keys and makes no
 network calls. Both `ruff` and its rule set are pinned (`ruff.toml`,
