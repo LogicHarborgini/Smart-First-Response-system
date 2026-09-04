@@ -10,6 +10,7 @@ langchain-core>=1.5,<2
 langchain-community>=0.4,<0.5
 langchain-ollama>=1.1,<2       # local fallback when AWS Bedrock is unavailable
 langchain-groq>=1,<2           # free hosted LLM for the public deployment
+langgraph>=1.2,<2              # triage agent: state machine over the chain
 
 # Observability
 langsmith>=0.10,<1
