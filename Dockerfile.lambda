@@ -1,0 +1,18 @@
+# Lambda container image for the SFR FastAPI service.
+#
+# Separate from the main Dockerfile: Lambda does not run a web server, it
+# invokes a handler. The AWS base image ships the Runtime Interface Client
+# that makes that work, so there is no uvicorn and no CMD shell wrapper here.
+
+FROM public.ecr.aws/lambda/python:3.12
+
+# Dependencies first so this layer caches across code edits.
+# mangum is Lambda-only, which is why it lives here and not in requirements.txt.
+COPY requirements.txt ${LAMBDA_TASK_ROOT}/
+RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt \
+    && pip install --no-cache-dir "mangum>=0.17,<1"
+
+COPY app/ ${LAMBDA_TASK_ROOT}/app/
+
+# module.submodule.attribute — the Mangum instance in app/lambda_handler.py
+CMD ["app.lambda_handler.handler"]
