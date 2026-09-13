@@ -112,3 +112,57 @@ def test_messy_content_is_preprocessed_not_rejected(client):
 
     assert response.status_code == 200
     assert response.json()["first_response"].strip()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Agent endpoint
+#
+# The fake provider returns one canned triage verdict, so these exercise the
+# auto_respond path only. Routing across all three branches is covered in
+# test_agent.py, which stubs the model per branch.
+# ─────────────────────────────────────────────────────────────────────────────
+
+AGENT_TICKET = {**VALID_TICKET, "partner": "Northwind Logistics", "category": "AS2"}
+
+
+def test_agent_returns_decision_and_audit_trail(client):
+    response = client.post("/api/v1/generate-response/agent", json=AGENT_TICKET)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ticket_id"] == "TICK-001"
+    assert body["decision"] == "auto_respond"
+    assert body["node_path"] == ["triage", "respond"]
+    assert 0.0 <= body["confidence"] <= 1.0
+    assert body["reasoning"].strip()
+    assert body["latency_ms"] > 0
+
+
+def test_agent_populates_only_the_field_its_decision_calls_for(client):
+    """
+    The three output fields are mutually exclusive. A caller routes on `decision`
+    and reads one field; two of them being null is the contract, not an accident.
+    """
+    body = client.post("/api/v1/generate-response/agent", json=AGENT_TICKET).json()
+
+    assert body["first_response"].strip()
+    assert body["clarifying_question"] is None
+    assert body["escalation_summary"] is None
+
+
+def test_agent_accepts_a_ticket_without_partner_or_category(client):
+    """Both are optional, so the plain endpoint's payload has to work here unchanged."""
+    response = client.post("/api/v1/generate-response/agent", json=VALID_TICKET)
+
+    assert response.status_code == 200
+
+
+def test_agent_applies_the_same_input_validation(client):
+    """Validation lives on the shared request model, so it must reject identically."""
+    response = client.post("/api/v1/generate-response/agent", json={
+        "ticket_id": "tick-005",
+        "content": "short",
+    })
+
+    assert response.status_code == 422
+    assert "too short" in response.text.lower()

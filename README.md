@@ -24,6 +24,10 @@ curl -X POST https://vis-smart-first-response-system-production.up.railway.app/a
   }'
 ```
 
+Swap the path for `/api/v1/generate-response/agent` to route the same ticket
+through the [triage agent](#triage-agent) instead, which decides whether to
+answer it, ask a question, or escalate it to a human.
+
 The deployed demo runs on Groq rather than Bedrock — see [Deployment](#deployment)
 for why, and for how the provider is selected without a code change.
 
@@ -132,7 +136,41 @@ async for token in chain.astream({"ticket_content": ticket}):
 | LLM Orchestration | LangChain LCEL | Chain prompt → LLM → parser |
 | LLM | Amazon Bedrock (Claude 3 Sonnet) | Generate first responses |
 | Validation | Pydantic | Request/response schema enforcement |
+| Agent routing | LangGraph | Triage a ticket before answering it |
 | Deployment | Docker → Railway | Containerised serving, deployed from `main` |
+
+## Triage Agent
+
+The chain above answers every ticket it receives — including the ones that
+should not be answered. `POST /api/v1/generate-response/agent` classifies first
+and routes on the result:
+
+```
+START → triage ─┬─ auto_respond ────────→ respond   → END
+                ├─ needs_clarification ─→ clarify   → END
+                └─ escalate ───────────→ escalate  → END
+```
+
+| Decision | Populated field | Meaning |
+|---|---|---|
+| `auto_respond` | `first_response` | Clear enough to acknowledge now — same generation the plain endpoint produces |
+| `needs_clarification` | `clarifying_question` | Too vague to reply to; one question is worth more than any answer |
+| `escalate` | `escalation_summary` | Data loss, suspected breach, legal threat, or a P1 where automation would read as dismissive — internal handoff note for a human |
+
+Every triage failure — unparseable JSON, an unknown decision value, a dead
+provider — resolves to `escalate` with confidence `0.0` and a reasoning string
+saying which failure fired. A ticket wrongly sent to a human costs a minute; a
+wrong automated reply during a security incident cannot be taken back.
+
+The response carries `node_path` (e.g. `["triage", "escalate"]`), so the route
+taken is auditable without opening LangSmith.
+
+Both endpoints are kept. The agent costs two model calls to the plain
+endpoint's one and can decline to answer — worth it when the ticket is not known
+to be answerable, wasteful when it is.
+
+Full design notes, including why triage runs at temperature 0 and why there is
+no clarify loop: [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
 
 ## Deployment
 

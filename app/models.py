@@ -23,6 +23,19 @@ class TicketPriority(StrEnum):
     P3 = "P3"
 
 
+class TriageDecision(StrEnum):
+    """
+    What the triage node decided to do with a ticket.
+
+    ESCALATE is the safe default: every failure path in the triage node resolves
+    here. Sending a wrong automated reply to a customer is not recoverable in the
+    way that putting a straightforward ticket in front of a human is.
+    """
+    AUTO_RESPOND = "auto_respond"
+    NEEDS_CLARIFICATION = "needs_clarification"
+    ESCALATE = "escalate"
+
+
 class SFRRequest(BaseModel):
     """Request body for POST /api/v1/generate-response."""
 
@@ -33,6 +46,16 @@ class SFRRequest(BaseModel):
     content: str = Field(..., description="Full ticket content")
     priority: TicketPriority = Field(default=TicketPriority.P2)
     customer_name: str | None = Field(default=None)
+    # partner and category are optional so the plain endpoint's contract is
+    # unchanged. They exist for the triage agent, which routes better when it can
+    # see who raised the ticket and what area it falls in — a P1 from a partner
+    # in "security" is a different decision from a P1 in "documentation".
+    partner: str | None = Field(
+        default=None, description="Trading partner or account the ticket came from"
+    )
+    category: str | None = Field(
+        default=None, description="Issue area, e.g. EDI, AS2, SFTP, API, billing"
+    )
 
     @field_validator("ticket_id")
     @classmethod
@@ -72,6 +95,36 @@ class SFRResponse(BaseModel):
     status: str = "success"
     # LangSmith trace ID for this run. None when tracing is disabled. Returning
     # it lets a ticket in your own records be matched to its trace afterwards.
+    langsmith_run_id: str | None = Field(default=None)
+
+
+class SFRAgentResponse(BaseModel):
+    """
+    Response body from POST /api/v1/generate-response/agent.
+
+    Exactly one of first_response / clarifying_question / escalation_summary is
+    populated, determined by `decision`. They are separate fields rather than one
+    `output` string because a caller has to treat them differently: one gets sent
+    to the customer, one gets sent back asking for more detail, and one goes to a
+    human queue. Collapsing them would push that distinction onto the client.
+    """
+
+    ticket_id: str
+    decision: TriageDecision
+    confidence: float = Field(ge=0.0, le=1.0)
+    reasoning: str
+    # The nodes that ran, in order — e.g. ["triage", "escalate"]. This is the
+    # audit trail: it answers "why did this ticket get that outcome" without
+    # opening LangSmith.
+    node_path: list[str]
+
+    first_response: str | None = None
+    clarifying_question: str | None = None
+    escalation_summary: str | None = None
+
+    model_used: str
+    latency_ms: float
+    status: str = "success"
     langsmith_run_id: str | None = Field(default=None)
 
 

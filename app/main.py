@@ -15,9 +15,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.agent.graph import ainvoke_agent_traced, get_sfr_agent
 from app.chain import active_model_id, ainvoke_sfr_traced, get_sfr_chain
 from app.config import settings
-from app.models import HealthResponse, SFRRequest, SFRResponse
+from app.models import (
+    HealthResponse,
+    SFRAgentResponse,
+    SFRRequest,
+    SFRResponse,
+    TriageDecision,
+)
 
 logging.basicConfig(level=settings.log_level)
 logger = logging.getLogger(__name__)
@@ -52,6 +59,7 @@ async def lifespan(app: FastAPI):
     # on the first request rather than being permanent.
     try:
         get_sfr_chain()
+        get_sfr_agent()
         logger.info("Active model: %s", active_model_id())
     except Exception as e:
         logger.warning(f"Chain pre-warm failed: {e} — retrying on first request")
@@ -121,6 +129,78 @@ async def generate_first_response(request: SFRRequest) -> SFRResponse:
     return SFRResponse(
         ticket_id=request.ticket_id,
         first_response=first_response,
+        model_used=active_model_id(),
+        latency_ms=latency_ms,
+        langsmith_run_id=run_id,
+    )
+
+
+@app.post(
+    "/api/v1/generate-response/agent",
+    response_model=SFRAgentResponse,
+    summary="Triage a ticket, then respond, ask for detail, or escalate",
+    tags=["SFR"],
+)
+async def generate_agent_response(request: SFRRequest) -> SFRAgentResponse:
+    """
+    Route a support ticket through the LangGraph triage agent.
+
+    Same request body as /api/v1/generate-response, but the ticket is classified
+    before anything is written. Three outcomes, and only one of the three output
+    fields is populated on any given call:
+
+    - `auto_respond`        → `first_response`, the same generation the plain
+                              endpoint produces
+    - `needs_clarification` → `clarifying_question`, one question to send back
+    - `escalate`            → `escalation_summary`, an internal handoff note
+
+    Costs two model calls against the plain endpoint's one, and it can decline to
+    answer. Use the plain endpoint when the ticket is already known to be
+    answerable; use this one when it is not.
+    """
+    start = time.perf_counter()
+
+    logger.info(
+        f"SFR agent request | ticket_id={request.ticket_id} | "
+        f"priority={request.priority.value}"
+    )
+
+    try:
+        final_state, run_id = await ainvoke_agent_traced(
+            ticket_id=request.ticket_id,
+            raw_content=request.content,
+            priority=request.priority.value,
+            customer_name=request.customer_name,
+            partner=request.partner,
+            category=request.category,
+        )
+    except Exception as e:
+        logger.error(f"Agent invocation failed: {e}")
+        raise HTTPException(
+            status_code=503, detail=f"LLM service unavailable: {e}"
+        ) from e
+
+    latency_ms = round((time.perf_counter() - start) * 1000, 1)
+    # The decision is read with a default rather than indexed. Triage always sets
+    # it, but a missing key here would turn a degraded response into a KeyError
+    # and a 500 — the wrong trade for a field with an obvious safe fallback.
+    decision = final_state.get("triage_decision", TriageDecision.ESCALATE)
+
+    logger.info(
+        f"SFR agent response | ticket_id={request.ticket_id} | "
+        f"decision={decision.value} | path={final_state.get('node_path')} | "
+        f"latency={latency_ms}ms | run_id={run_id}"
+    )
+
+    return SFRAgentResponse(
+        ticket_id=request.ticket_id,
+        decision=decision,
+        confidence=final_state.get("confidence_score", 0.0),
+        reasoning=final_state.get("triage_reasoning", ""),
+        node_path=final_state.get("node_path", []),
+        first_response=final_state.get("response"),
+        clarifying_question=final_state.get("clarifying_question"),
+        escalation_summary=final_state.get("escalation_summary"),
         model_used=active_model_id(),
         latency_ms=latency_ms,
         langsmith_run_id=run_id,

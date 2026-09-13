@@ -314,7 +314,7 @@ def get_sfr_chain() -> Runnable:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _tracing_enabled() -> bool:
+def tracing_enabled() -> bool:
     """Whether LangSmith tracing is switched on for this process."""
     return os.getenv("LANGSMITH_TRACING", "").strip().lower() == "true"
 
@@ -381,7 +381,7 @@ async def ainvoke_sfr_traced(
         The generated response, and the LangSmith run ID — None when tracing is
         disabled, since there is no trace to point at.
     """
-    if not _tracing_enabled():
+    if not tracing_enabled():
         response = await _sfr_pipeline(
             ticket_id=ticket_id,
             raw_content=raw_content,
