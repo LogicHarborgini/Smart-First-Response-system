@@ -7,11 +7,17 @@
 
 ## Live Demo
 
-**Interactive API docs:**
-https://h9ye12u7wg.execute-api.us-east-1.amazonaws.com/docs
+**Console:**
+https://h9ye12u7wg.execute-api.us-east-1.amazonaws.com/ui/
 
-No setup required — open the Swagger UI, click *Try it out*, and send a real
-ticket through a live LLM.
+No setup required — pick one of the example tickets, send it, and watch a live
+LLM answer it. Four tabs: the plain chain, the triage agent (with the route it
+took and why), a health probe, and the request/response schemas read live from
+`/openapi.json`.
+
+Raw Swagger UI is still at
+[`/docs`](https://h9ye12u7wg.execute-api.us-east-1.amazonaws.com/docs) if you
+would rather drive the API directly.
 
 ```bash
 curl -X POST https://h9ye12u7wg.execute-api.us-east-1.amazonaws.com/api/v1/generate-response \

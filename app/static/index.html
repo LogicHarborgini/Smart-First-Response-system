@@ -1,0 +1,818 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart First Response — API Console</title>
+<style>
+/* ── tokens ─────────────────────────────────────────────────────────── */
+:root{
+  --bg:#0d1117; --surface:#161b22; --surface-2:#1c2128; --surface-3:#21262d;
+  --border:#30363d; --border-soft:#21262d;
+  --text:#e6edf3; --text-dim:#9da7b3; --text-faint:#6e7781;
+  --accent:#58a6ff; --accent-dim:#1f6feb; --accent-wash:rgba(88,166,255,.12);
+  --ok:#3fb950; --ok-wash:rgba(63,185,80,.12);
+  --warn:#d29922; --warn-wash:rgba(210,153,34,.12);
+  --danger:#f85149; --danger-wash:rgba(248,81,73,.12);
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --r:8px; --r-sm:6px;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:var(--sans); font-size:15px; line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+a{color:var(--accent)}
+
+/* ── layout ─────────────────────────────────────────────────────────── */
+.wrap{max-width:1080px; margin:0 auto; padding:0 24px 96px}
+
+header{border-bottom:1px solid var(--border); background:var(--surface); margin-bottom:0}
+.head-inner{max-width:1080px; margin:0 auto; padding:28px 24px 0}
+.brand{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap}
+h1{font-size:21px; font-weight:600; margin:0; letter-spacing:-.01em}
+.brand .tag{
+  font-family:var(--mono); font-size:11px; color:var(--text-faint);
+  border:1px solid var(--border); border-radius:999px; padding:2px 9px;
+}
+.sub{color:var(--text-dim); font-size:14px; margin:6px 0 0; max-width:70ch}
+.endpoint{
+  display:flex; align-items:center; gap:9px; margin:16px 0 0;
+  font-family:var(--mono); font-size:12px; color:var(--text-dim);
+  overflow-x:auto; padding-bottom:2px;
+}
+.dot{width:7px; height:7px; border-radius:50%; background:var(--text-faint); flex:none}
+.dot.live{background:var(--ok); box-shadow:0 0 0 3px var(--ok-wash)}
+.dot.down{background:var(--danger); box-shadow:0 0 0 3px var(--danger-wash)}
+
+/* ── tabs ───────────────────────────────────────────────────────────── */
+nav[role=tablist]{display:flex; gap:2px; margin-top:22px; overflow-x:auto; scrollbar-width:none}
+nav[role=tablist]::-webkit-scrollbar{display:none}
+.tab{
+  appearance:none; background:none; border:0; border-bottom:2px solid transparent;
+  color:var(--text-dim); font:inherit; font-size:14px; font-weight:500;
+  padding:11px 16px; cursor:pointer; white-space:nowrap;
+  display:flex; align-items:center; gap:8px; transition:color .12s;
+}
+.tab:hover{color:var(--text)}
+.tab[aria-selected=true]{color:var(--text); border-bottom-color:var(--accent)}
+.tab:focus-visible{outline:2px solid var(--accent); outline-offset:-2px; border-radius:var(--r-sm)}
+.tab .n{
+  font-family:var(--mono); font-size:10px; color:var(--text-faint);
+  border:1px solid var(--border); border-radius:4px; padding:1px 5px;
+}
+.tab[aria-selected=true] .n{color:var(--accent); border-color:var(--accent-dim)}
+
+/* ── panels ─────────────────────────────────────────────────────────── */
+[role=tabpanel]{padding-top:32px}
+[role=tabpanel][hidden]{display:none}
+.panel-head{margin-bottom:24px}
+.panel-head h2{font-size:17px; font-weight:600; margin:0 0 6px}
+.panel-head p{color:var(--text-dim); font-size:14px; margin:0; max-width:72ch}
+.route{
+  display:inline-flex; align-items:center; gap:8px; margin-top:12px;
+  font-family:var(--mono); font-size:12px;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-sm); padding:5px 10px;
+}
+.verb{font-weight:700; font-size:11px; letter-spacing:.04em}
+.verb.post{color:var(--accent)} .verb.get{color:var(--ok)}
+
+.card{
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r); padding:22px;
+}
+.card + .card{margin-top:20px}
+
+/* ── form ───────────────────────────────────────────────────────────── */
+.grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px}
+.field{display:flex; flex-direction:column; gap:6px; min-width:0}
+.field.wide{grid-column:1/-1}
+label{
+  font-size:12px; font-weight:600; color:var(--text-dim);
+  font-family:var(--mono); letter-spacing:.02em;
+  display:flex; align-items:center; gap:6px;
+}
+.req{color:var(--danger); font-size:13px; line-height:1}
+.opt{color:var(--text-faint); font-weight:400; letter-spacing:0}
+input,textarea,select{
+  width:100%; font-family:var(--mono); font-size:13px; color:var(--text);
+  background:var(--bg); border:1px solid var(--border); border-radius:var(--r-sm);
+  padding:9px 11px; transition:border-color .12s, box-shadow .12s;
+}
+textarea{resize:vertical; min-height:96px; line-height:1.6}
+input:focus,textarea:focus,select:focus{
+  outline:none; border-color:var(--accent-dim); box-shadow:0 0 0 3px var(--accent-wash);
+}
+input::placeholder,textarea::placeholder{color:var(--text-faint)}
+select{appearance:none; cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath fill='%239da7b3' d='M0 0h10L5 6z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 11px center; padding-right:30px}
+
+.actions{
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  margin-top:20px; padding-top:20px; border-top:1px solid var(--border-soft);
+}
+.btn{
+  appearance:none; font:inherit; font-size:14px; font-weight:500;
+  border-radius:var(--r-sm); padding:9px 18px; cursor:pointer;
+  border:1px solid transparent; transition:background .12s, border-color .12s;
+  display:inline-flex; align-items:center; gap:8px;
+}
+.btn-primary{background:var(--accent-dim); color:#fff}
+.btn-primary:hover:not(:disabled){background:#388bfd}
+.btn-ghost{background:transparent; border-color:var(--border); color:var(--text-dim)}
+.btn-ghost:hover:not(:disabled){border-color:var(--text-faint); color:var(--text)}
+.btn:disabled{opacity:.5; cursor:not-allowed}
+.btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.hint{font-size:12px; color:var(--text-faint); margin-left:auto; font-family:var(--mono)}
+
+.presets{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:18px}
+.presets .lbl{font-size:12px; color:var(--text-faint); font-family:var(--mono)}
+.chip{
+  appearance:none; font:inherit; font-size:12px; cursor:pointer;
+  background:var(--surface-2); color:var(--text-dim);
+  border:1px solid var(--border); border-radius:999px; padding:4px 12px;
+  transition:color .12s, border-color .12s;
+}
+.chip:hover{color:var(--text); border-color:var(--text-faint)}
+.chip:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+/* ── spinner ────────────────────────────────────────────────────────── */
+.spin{
+  width:14px; height:14px; flex:none; border-radius:50%;
+  border:2px solid rgba(255,255,255,.28); border-top-color:#fff;
+  animation:sp .7s linear infinite;
+}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2s}}
+
+/* ── result ─────────────────────────────────────────────────────────── */
+.result{margin-top:24px}
+.result[hidden]{display:none}
+.res-bar{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:11px 16px; background:var(--surface-2);
+  border:1px solid var(--border); border-bottom:0;
+  border-radius:var(--r) var(--r) 0 0;
+}
+.badge{
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:var(--mono); font-size:11px; font-weight:600;
+  border-radius:999px; padding:3px 11px; border:1px solid transparent;
+  letter-spacing:.02em;
+}
+.badge.ok{background:var(--ok-wash); color:var(--ok); border-color:rgba(63,185,80,.3)}
+.badge.warn{background:var(--warn-wash); color:var(--warn); border-color:rgba(210,153,34,.3)}
+.badge.bad{background:var(--danger-wash); color:var(--danger); border-color:rgba(248,81,73,.3)}
+.badge.info{background:var(--accent-wash); color:var(--accent); border-color:rgba(88,166,255,.3)}
+.meta{font-family:var(--mono); font-size:11px; color:var(--text-faint)}
+.meta b{color:var(--text-dim); font-weight:500}
+.res-body{
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:0 0 var(--r) var(--r); padding:22px;
+}
+.out-label{
+  font-family:var(--mono); font-size:11px; color:var(--text-faint);
+  letter-spacing:.04em; text-transform:uppercase; margin:0 0 10px;
+}
+.out-text{
+  white-space:pre-wrap; word-wrap:break-word; margin:0;
+  font-size:14.5px; line-height:1.75; color:var(--text);
+}
+.section{margin-top:24px; padding-top:22px; border-top:1px solid var(--border-soft)}
+.section:first-child{margin-top:0; padding-top:0; border-top:0}
+
+/* node path */
+.path{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.node{
+  font-family:var(--mono); font-size:12px; color:var(--text);
+  background:var(--surface-3); border:1px solid var(--border);
+  border-radius:var(--r-sm); padding:4px 12px;
+}
+.node.term{border-color:var(--accent-dim); color:var(--accent)}
+.arrow{color:var(--text-faint); font-size:13px}
+
+/* confidence */
+.conf{display:flex; align-items:center; gap:12px}
+.bar{
+  flex:1; height:6px; min-width:80px; border-radius:999px;
+  background:var(--surface-3); overflow:hidden;
+}
+.bar span{display:block; height:100%; border-radius:999px; background:var(--accent)}
+.conf .val{font-family:var(--mono); font-size:13px; color:var(--text); min-width:48px; text-align:right}
+
+pre.json{
+  margin:0; padding:16px; overflow-x:auto;
+  background:var(--bg); border:1px solid var(--border); border-radius:var(--r-sm);
+  font-family:var(--mono); font-size:12px; line-height:1.65; color:var(--text-dim);
+}
+details.raw{margin-top:22px}
+details.raw summary{
+  cursor:pointer; font-family:var(--mono); font-size:12px; color:var(--text-faint);
+  padding:6px 0; user-select:none;
+}
+details.raw summary:hover{color:var(--text-dim)}
+details.raw summary:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+details.raw[open] summary{margin-bottom:10px}
+
+.notice{
+  display:flex; gap:10px; align-items:flex-start;
+  padding:12px 16px; border-radius:var(--r-sm); font-size:13px; line-height:1.55;
+  background:var(--warn-wash); border:1px solid rgba(210,153,34,.3); color:#e3b341;
+}
+.notice.err{background:var(--danger-wash); border-color:rgba(248,81,73,.3); color:#ff8a80}
+.notice .ic{font-family:var(--mono); font-weight:700; flex:none; line-height:1.55}
+.notice code{font-family:var(--mono); font-size:12px}
+
+/* ── health ─────────────────────────────────────────────────────────── */
+.stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-top:20px}
+.stat{background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r); padding:16px}
+.stat .k{
+  font-family:var(--mono); font-size:10.5px; color:var(--text-faint);
+  letter-spacing:.05em; text-transform:uppercase; margin:0 0 8px;
+}
+.stat .v{font-family:var(--mono); font-size:19px; font-weight:600; color:var(--text); margin:0;
+  overflow-wrap:break-word}
+.stat .v.ok{color:var(--ok)} .stat .v.bad{color:var(--danger)}
+
+.log{margin-top:24px}
+.log h3{font-size:13px; font-weight:600; margin:0 0 10px; color:var(--text-dim)}
+.log-rows{border:1px solid var(--border); border-radius:var(--r); overflow:hidden}
+.log-row{
+  display:flex; align-items:center; gap:12px; padding:9px 14px;
+  font-family:var(--mono); font-size:12px; background:var(--surface);
+  border-bottom:1px solid var(--border-soft);
+}
+.log-row:last-child{border-bottom:0}
+.log-row .t{color:var(--text-faint); flex:none}
+.log-row .s{flex:none; font-weight:600}
+.log-row .s.ok{color:var(--ok)} .log-row .s.bad{color:var(--danger)}
+.log-row .d{color:var(--text-dim); margin-left:auto; flex:none}
+.empty{color:var(--text-faint); font-size:13px; font-family:var(--mono); padding:18px 14px;
+  background:var(--surface); text-align:center}
+
+/* ── schemas ────────────────────────────────────────────────────────── */
+.sk{margin-top:24px}
+.sk:first-of-type{margin-top:0}
+.sk-head{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:4px}
+.sk-head h3{font-family:var(--mono); font-size:14px; font-weight:600; margin:0; color:var(--text)}
+.sk-head .kind{font-family:var(--mono); font-size:10.5px; color:var(--text-faint);
+  border:1px solid var(--border); border-radius:4px; padding:1px 6px}
+.sk-desc{color:var(--text-dim); font-size:13px; margin:0 0 14px; max-width:72ch}
+.t-scroll{overflow-x:auto; border:1px solid var(--border); border-radius:var(--r)}
+table{width:100%; border-collapse:collapse; font-size:13px; min-width:520px}
+th{
+  text-align:left; font-family:var(--mono); font-size:10.5px; font-weight:600;
+  color:var(--text-faint); letter-spacing:.05em; text-transform:uppercase;
+  padding:10px 14px; background:var(--surface-2); border-bottom:1px solid var(--border);
+  white-space:nowrap;
+}
+td{padding:11px 14px; border-bottom:1px solid var(--border-soft); vertical-align:top;
+  background:var(--surface)}
+tr:last-child td{border-bottom:0}
+td.name{font-family:var(--mono); font-size:12.5px; color:var(--text); white-space:nowrap}
+td.type{font-family:var(--mono); font-size:12px; color:var(--accent); white-space:nowrap}
+td.flag{white-space:nowrap}
+td.desc{color:var(--text-dim); font-size:13px; line-height:1.55; min-width:180px}
+.pill{font-family:var(--mono); font-size:10px; font-weight:600; border-radius:4px;
+  padding:2px 7px; letter-spacing:.03em}
+.pill.r{background:var(--danger-wash); color:var(--danger)}
+.pill.o{background:var(--surface-3); color:var(--text-faint)}
+.dflt{font-family:var(--mono); font-size:11.5px; color:var(--text-faint)}
+
+.ep-list{border:1px solid var(--border); border-radius:var(--r); overflow:hidden; margin-bottom:32px}
+.ep{display:flex; align-items:center; gap:12px; padding:12px 16px;
+  background:var(--surface); border-bottom:1px solid var(--border-soft); flex-wrap:wrap}
+.ep:last-child{border-bottom:0}
+.ep .path{font-family:var(--mono); font-size:13px; color:var(--text); flex:none}
+.ep .sum{color:var(--text-dim); font-size:12.5px; margin-left:auto; text-align:right}
+
+.skeleton{height:13px; border-radius:4px; background:var(--surface-3); animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+footer{
+  margin-top:56px; padding-top:22px; border-top:1px solid var(--border);
+  color:var(--text-faint); font-size:12px; font-family:var(--mono);
+  display:flex; gap:16px; flex-wrap:wrap; align-items:center;
+}
+footer a{color:var(--text-dim); text-decoration:none}
+footer a:hover{color:var(--accent); text-decoration:underline}
+
+.sr{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+  clip:rect(0,0,0,0); white-space:nowrap; border:0}
+
+@media (max-width:680px){
+  .grid{grid-template-columns:1fr}
+  .head-inner,.wrap{padding-left:16px; padding-right:16px}
+  .card{padding:18px}
+  .hint{margin-left:0; width:100%}
+  .ep .sum{margin-left:0; width:100%; text-align:left}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="head-inner">
+    <div class="brand">
+      <h1>Smart First Response</h1>
+      <span class="tag">v1</span>
+    </div>
+    <p class="sub">
+      Generates the first customer reply for enterprise support tickets, and decides
+      when a ticket should not be auto-answered at all.
+    </p>
+    <div class="endpoint">
+      <span class="dot" id="liveDot" title="checking"></span>
+      <span id="liveHost">&nbsp;</span>
+    </div>
+    <nav role="tablist" aria-label="Sections">
+      <button class="tab" role="tab" id="t-1" aria-controls="p-1" aria-selected="true"><span class="n">01</span>First Response</button>
+      <button class="tab" role="tab" id="t-2" aria-controls="p-2" aria-selected="false"><span class="n">02</span>Triage Agent</button>
+      <button class="tab" role="tab" id="t-3" aria-controls="p-3" aria-selected="false"><span class="n">03</span>Health</button>
+      <button class="tab" role="tab" id="t-4" aria-controls="p-4" aria-selected="false"><span class="n">04</span>Schemas</button>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ══ 01 ══════════════════════════════════════════════════════════════ -->
+<section role="tabpanel" id="p-1" aria-labelledby="t-1">
+  <div class="panel-head">
+    <h2>Generate a first response</h2>
+    <p>Sends the ticket straight through the LangChain chain. It always produces a
+       reply — it has no way to decline.</p>
+    <div class="route"><span class="verb post">POST</span><span>/api/v1/generate-response</span></div>
+  </div>
+  <div class="card" id="host-1"></div>
+  <div class="result" id="res-1" hidden></div>
+</section>
+
+<!-- ══ 02 ══════════════════════════════════════════════════════════════ -->
+<section role="tabpanel" id="p-2" aria-labelledby="t-2" hidden>
+  <div class="panel-head">
+    <h2>Route through the triage agent</h2>
+    <p>A LangGraph state machine classifies the ticket first, then routes it: answer
+       it, ask one clarifying question, or hand it to a human. Costs two model calls
+       instead of one, and can refuse to reply.</p>
+    <div class="route"><span class="verb post">POST</span><span>/api/v1/generate-response/agent</span></div>
+  </div>
+  <div class="card" id="host-2"></div>
+  <div class="result" id="res-2" hidden></div>
+</section>
+
+<!-- ══ 03 ══════════════════════════════════════════════════════════════ -->
+<section role="tabpanel" id="p-3" aria-labelledby="t-3" hidden>
+  <div class="panel-head">
+    <h2>Service health</h2>
+    <p>Liveness probe. The same endpoint the platform uses to decide whether this
+       instance should receive traffic.</p>
+    <div class="route"><span class="verb get">GET</span><span>/health</span></div>
+  </div>
+  <div class="card">
+    <div class="actions" style="margin:0; padding:0; border:0">
+      <button class="btn btn-primary" id="pingBtn">Run health check</button>
+      <button class="btn btn-ghost" id="ping5Btn">Run 5 times</button>
+      <span class="hint">measures round-trip latency</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><p class="k">Status</p><p class="v" id="hStatus">—</p></div>
+      <div class="stat"><p class="k">Service</p><p class="v" id="hService">—</p></div>
+      <div class="stat"><p class="k">Version</p><p class="v" id="hVersion">—</p></div>
+      <div class="stat"><p class="k">Round trip</p><p class="v" id="hLatency">—</p></div>
+    </div>
+    <div class="log">
+      <h3>Recent checks</h3>
+      <div class="log-rows" id="hLog"><div class="empty">No checks run yet</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══ 04 ══════════════════════════════════════════════════════════════ -->
+<section role="tabpanel" id="p-4" aria-labelledby="t-4" hidden>
+  <div class="panel-head">
+    <h2>API schemas</h2>
+    <p>Read live from <code style="font-family:var(--mono);font-size:12.5px">/openapi.json</code>
+       at page load, so this always matches the running service rather than a copy
+       that drifts.</p>
+  </div>
+  <div id="schemaHost">
+    <div class="card">
+      <div class="skeleton" style="width:40%"></div>
+      <div class="skeleton" style="width:75%; margin-top:12px"></div>
+      <div class="skeleton" style="width:60%; margin-top:12px"></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <span>Smart First Response</span>
+  <a href="/docs">Swagger UI</a>
+  <a href="/openapi.json">openapi.json</a>
+  <a href="https://github.com/LogicHarborgini/Smart-First-Response-system" target="_blank" rel="noopener">Source</a>
+</footer>
+</div>
+
+<!-- form template, cloned into both request panels -->
+<template id="formTpl">
+  <div class="presets">
+    <span class="lbl">examples</span>
+    <button type="button" class="chip" data-p="edi">EDI outage</button>
+    <button type="button" class="chip" data-p="vague">Vague ticket</button>
+    <button type="button" class="chip" data-p="breach">Security incident</button>
+  </div>
+  <form novalidate>
+    <div class="grid">
+      <div class="field">
+        <label>ticket_id <span class="req" title="required">*</span></label>
+        <input name="ticket_id" required placeholder="TKT-001" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>priority <span class="opt">optional</span></label>
+        <select name="priority">
+          <option value="P1">P1 — critical</option>
+          <option value="P2" selected>P2 — normal</option>
+          <option value="P3">P3 — low</option>
+        </select>
+      </div>
+      <div class="field wide">
+        <label>content <span class="req" title="required">*</span> <span class="opt">min 10 characters</span></label>
+        <textarea name="content" required rows="4"
+          placeholder="Describe the issue as the customer reported it…"></textarea>
+      </div>
+      <div class="field">
+        <label>customer_name <span class="opt">optional</span></label>
+        <input name="customer_name" placeholder="Acme Corp" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>partner <span class="opt">optional</span></label>
+        <input name="partner" placeholder="Trading partner" autocomplete="off">
+      </div>
+      <div class="field wide">
+        <label>category <span class="opt">optional</span></label>
+        <input name="category" placeholder="EDI, AS2, SFTP, API, billing…" autocomplete="off">
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn btn-primary"><span class="btn-label">Send ticket</span></button>
+      <button type="reset" class="btn btn-ghost">Clear</button>
+      <span class="hint">Ctrl + Enter to send</span>
+    </div>
+  </form>
+</template>
+
+<script>
+(function(){
+"use strict";
+
+const $  = (s,r)=> (r||document).querySelector(s);
+const $$ = (s,r)=> Array.from((r||document).querySelectorAll(s));
+const esc = s => String(s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ── tabs ─────────────────────────────────────────────────────────── */
+const tabs = $$('.tab');
+function select(id){
+  tabs.forEach(t=>{
+    const on = t.id === id;
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+    t.tabIndex = on ? 0 : -1;
+    $('#'+t.getAttribute('aria-controls')).hidden = !on;
+  });
+  if (location.hash.slice(1) !== id) history.replaceState(null,'','#'+id);
+}
+tabs.forEach((t,i)=>{
+  t.addEventListener('click', ()=> select(t.id));
+  t.addEventListener('keydown', e=>{
+    const d = e.key==='ArrowRight' ? 1 : e.key==='ArrowLeft' ? -1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    const n = tabs[(i + d + tabs.length) % tabs.length];
+    n.focus(); select(n.id);
+  });
+});
+select(tabs.some(t=>t.id===location.hash.slice(1)) ? location.hash.slice(1) : 't-1');
+
+/* ── presets ──────────────────────────────────────────────────────── */
+const PRESETS = {
+  edi: {
+    ticket_id:'TKT-1041', priority:'P1', customer_name:'Acme Corp',
+    partner:'Acme Corp', category:'EDI',
+    content:'EDI 850 purchase orders stopped processing. 47 orders backed up since 14:30 UTC. Nothing changed on our side that we are aware of.'
+  },
+  vague: {
+    ticket_id:'TKT-1042', priority:'P3', customer_name:'', partner:'', category:'',
+    content:'It is not working properly. Please fix it as soon as you can.'
+  },
+  breach: {
+    ticket_id:'TKT-1043', priority:'P1', customer_name:'Northwind Ltd',
+    partner:'Northwind Ltd', category:'security',
+    content:'We believe credentials for our SFTP account have been exposed publicly. There are transfers in the log we did not initiate. Please advise urgently.'
+  }
+};
+
+/* ── request panels ───────────────────────────────────────────────── */
+const tpl = $('#formTpl');
+
+function mount(hostSel, resSel, path, render){
+  const host = $(hostSel), res = $(resSel);
+  host.appendChild(tpl.content.cloneNode(true));
+  const form = $('form', host);
+  const btn  = $('button[type=submit]', form);
+  const lbl  = $('.btn-label', btn);
+
+  $$('.chip', host).forEach(c => c.addEventListener('click', ()=>{
+    const p = PRESETS[c.dataset.p];
+    Object.entries(p).forEach(([k,v])=>{ const f = form.elements[k]; if (f) f.value = v; });
+    form.elements.content.focus();
+  }));
+
+  form.addEventListener('keydown', e=>{
+    if ((e.ctrlKey||e.metaKey) && e.key === 'Enter'){ e.preventDefault(); form.requestSubmit(); }
+  });
+  form.addEventListener('reset', ()=>{ res.hidden = true; });
+
+  form.addEventListener('submit', async e=>{
+    e.preventDefault();
+    const fd = new FormData(form);
+    const body = {
+      ticket_id: (fd.get('ticket_id')||'').trim(),
+      content:   (fd.get('content')||'').trim(),
+      priority:  fd.get('priority') || 'P2'
+    };
+    ['customer_name','partner','category'].forEach(k=>{
+      const v = (fd.get(k)||'').trim(); if (v) body[k] = v;
+    });
+
+    if (!body.ticket_id || body.content.length < 10){
+      res.hidden = false;
+      res.innerHTML = notice('err','!',
+        'Fill in <code>ticket_id</code> and at least 10 characters of <code>content</code>. '+
+        'The API enforces both and would return a 422.');
+      return;
+    }
+
+    btn.disabled = true;
+    lbl.textContent = 'Sending…';
+    btn.insertBefore(spinner(), lbl);
+    res.hidden = false;
+    res.innerHTML = notice('','>', 'Waiting for the service…');
+
+    // Cold starts on Lambda take 10-20s; say so rather than look frozen.
+    const warn = setTimeout(()=>{
+      const n = $('.notice', res);
+      if (n) n.lastElementChild.innerHTML =
+        'Still waiting — the service is scaled to zero, so the first request after '+
+        'an idle period takes 10&ndash;20 seconds to start the container.';
+    }, 3500);
+
+    const t0 = performance.now();
+    try{
+      const r = await fetch(path, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+      });
+      const rtt = Math.round(performance.now() - t0);
+      const text = await r.text();
+      let data = null; try{ data = JSON.parse(text); }catch(_){}
+      res.innerHTML = r.ok && data ? render(data, rtt) : failure(r.status, data, text);
+    }catch(err){
+      res.innerHTML = notice('err','!',
+        'Request failed: '+esc(err.message)+'. The service may be unreachable.');
+    }finally{
+      clearTimeout(warn);
+      btn.disabled = false;
+      const s = $('.spin', btn); if (s) s.remove();
+      lbl.textContent = 'Send ticket';
+    }
+  });
+}
+
+function spinner(){ const s = document.createElement('span'); s.className='spin'; return s; }
+function notice(kind, ic, html){
+  return '<div class="notice '+kind+'"><span class="ic">'+ic+'</span><span>'+html+'</span></div>';
+}
+function failure(status, data, text){
+  let detail = '';
+  if (data && data.detail){
+    detail = Array.isArray(data.detail)
+      ? data.detail.map(d => (d.loc ? d.loc.slice(1).join('.')+': ' : '') + d.msg).join(' · ')
+      : (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail));
+  }
+  const hint = status === 422 ? 'Validation failed — check the fields above.'
+             : status === 429 ? 'Rate limited. The demo allows 5 requests/second.'
+             : status === 503 ? 'The model provider rejected the call or is unavailable.'
+             : 'The service returned an error.';
+  return notice('err','!','<b>HTTP '+status+'</b> — '+esc(hint)+
+    (detail ? '<br><code>'+esc(detail)+'</code>' : '')) +
+    '<details class="raw"><summary>Raw response</summary><pre class="json">'+
+    esc(data ? JSON.stringify(data,null,2) : text.slice(0,2000))+'</pre></details>';
+}
+function bar(d, rtt, extra){
+  return '<div class="res-bar">'+
+    '<span class="badge '+(d.status==='success'?'ok':'warn')+'">'+esc(d.status||'—')+'</span>'+
+    (extra||'')+
+    '<span class="meta"><b>'+esc(d.ticket_id||'')+'</b></span>'+
+    '<span class="meta">'+esc(d.model_used||'')+'</span>'+
+    '<span class="meta" style="margin-left:auto">model <b>'+
+      (d.latency_ms!=null ? Math.round(d.latency_ms)+' ms' : '—')+
+    '</b> &nbsp;·&nbsp; round trip <b>'+rtt+' ms</b></span>'+
+  '</div>';
+}
+function raw(d){
+  return '<details class="raw"><summary>Raw JSON response</summary>'+
+    '<pre class="json">'+esc(JSON.stringify(d,null,2))+'</pre></details>';
+}
+
+/* plain chain */
+mount('#host-1','#res-1','/api/v1/generate-response', (d, rtt)=>
+  bar(d, rtt) +
+  '<div class="res-body">'+
+    '<p class="out-label">Generated reply</p>'+
+    '<p class="out-text">'+esc(d.first_response||'')+'</p>'+
+    raw(d)+
+  '</div>'
+);
+
+/* triage agent */
+const DECISION = {
+  auto_respond:        {cls:'ok',   label:'auto_respond',        out:'first_response',      title:'Generated reply'},
+  needs_clarification: {cls:'warn', label:'needs_clarification', out:'clarifying_question', title:'Clarifying question'},
+  escalate:            {cls:'bad',  label:'escalate',            out:'escalation_summary',  title:'Escalation summary for a human'}
+};
+mount('#host-2','#res-2','/api/v1/generate-response/agent', (d, rtt)=>{
+  const m = DECISION[d.decision] || {cls:'info', label:d.decision, out:'first_response', title:'Output'};
+  const pct = Math.round((d.confidence||0)*100);
+  const path = (d.node_path||[]).map((n,i,a)=>
+    '<span class="node'+(i===a.length-1?' term':'')+'">'+esc(n)+'</span>'+
+    (i < a.length-1 ? '<span class="arrow">&rarr;</span>' : '')
+  ).join('');
+  const out = d[m.out];
+
+  return bar(d, rtt, '<span class="badge '+m.cls+'">'+esc(m.label)+'</span>') +
+  '<div class="res-body">'+
+    '<div class="section">'+
+      '<p class="out-label">Route taken</p>'+
+      '<div class="path">'+path+'</div>'+
+    '</div>'+
+    '<div class="section">'+
+      '<p class="out-label">Confidence</p>'+
+      '<div class="conf"><div class="bar"><span style="width:'+pct+'%"></span></div>'+
+      '<span class="val">'+pct+'%</span></div>'+
+    '</div>'+
+    '<div class="section">'+
+      '<p class="out-label">Reasoning</p>'+
+      '<p class="out-text" style="font-size:14px;color:var(--text-dim)">'+esc(d.reasoning||'')+'</p>'+
+    '</div>'+
+    (out ? '<div class="section"><p class="out-label">'+m.title+'</p>'+
+           '<p class="out-text">'+esc(out)+'</p></div>' : '')+
+    raw(d)+
+  '</div>';
+});
+
+/* ── health ───────────────────────────────────────────────────────── */
+const hLog = [];
+async function ping(quiet){
+  const t0 = performance.now();
+  let ok = false, data = null, status = 0;
+  try{
+    const r = await fetch('/health', {cache:'no-store'});
+    status = r.status; ok = r.ok;
+    try{ data = await r.json(); }catch(_){}
+  }catch(_){}
+  const ms = Math.round(performance.now() - t0);
+
+  if (!quiet){
+    $('#hStatus').textContent = ok ? (data && data.status || 'healthy') : 'unreachable';
+    $('#hStatus').className = 'v ' + (ok ? 'ok' : 'bad');
+    $('#hService').textContent = (data && data.service) || '—';
+    $('#hVersion').textContent = (data && data.version) || '—';
+    $('#hLatency').textContent = ms + ' ms';
+  }
+
+  hLog.unshift({ok, status, ms, at:new Date()});
+  if (hLog.length > 8) hLog.pop();
+  $('#hLog').innerHTML = hLog.map(e =>
+    '<div class="log-row">'+
+      '<span class="t">'+e.at.toLocaleTimeString()+'</span>'+
+      '<span class="s '+(e.ok?'ok':'bad')+'">'+(e.ok ? '200 OK' : (e.status||'ERR'))+'</span>'+
+      '<span class="d">'+e.ms+' ms</span>'+
+    '</div>').join('');
+
+  setDot(ok);
+  return ok;
+}
+function setDot(ok){
+  const d = $('#liveDot');
+  d.className = 'dot ' + (ok ? 'live' : 'down');
+  d.title = ok ? 'service reachable' : 'service unreachable';
+}
+$('#pingBtn').addEventListener('click', async e=>{
+  e.target.disabled = true; await ping(false); e.target.disabled = false;
+});
+$('#ping5Btn').addEventListener('click', async e=>{
+  e.target.disabled = true;
+  for (let i=0;i<5;i++){ await ping(i===4); await new Promise(r=>setTimeout(r,220)); }
+  e.target.disabled = false;
+});
+
+/* ── schemas ──────────────────────────────────────────────────────── */
+function typeLabel(s){
+  if (!s) return 'any';
+  if (s.$ref) return s.$ref.split('/').pop();
+  if (s.anyOf){
+    const t = s.anyOf.filter(x=>x.type!=='null').map(typeLabel);
+    return t.join(' | ') + (s.anyOf.some(x=>x.type==='null') ? ' | null' : '');
+  }
+  if (s.allOf) return s.allOf.map(typeLabel).join(' & ');
+  if (s.type === 'array') return typeLabel(s.items) + '[]';
+  if (s.enum) return s.enum.map(v=>JSON.stringify(v)).join(' | ');
+  return s.type || 'object';
+}
+function schemaTable(name, sch, spec){
+  const req = new Set(sch.required || []);
+  const props = sch.properties || {};
+  const keys = Object.keys(props);
+
+  if (sch.enum && !keys.length){
+    return '<div class="sk"><div class="sk-head"><h3>'+esc(name)+'</h3>'+
+      '<span class="kind">enum</span></div>'+
+      (sch.description ? '<p class="sk-desc">'+esc(sch.description.split('\n')[0])+'</p>' : '')+
+      '<div class="t-scroll"><table><thead><tr><th>Value</th></tr></thead><tbody>'+
+      sch.enum.map(v=>'<tr><td class="name">'+esc(JSON.stringify(v))+'</td></tr>').join('')+
+      '</tbody></table></div></div>';
+  }
+  if (!keys.length) return '';
+
+  return '<div class="sk"><div class="sk-head"><h3>'+esc(name)+'</h3>'+
+    '<span class="kind">object</span></div>'+
+    (sch.description ? '<p class="sk-desc">'+esc(sch.description.split('\n')[0])+'</p>' : '')+
+    '<div class="t-scroll"><table><thead><tr>'+
+      '<th>Field</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th>'+
+    '</tr></thead><tbody>'+
+    keys.map(k=>{
+      const p = props[k];
+      const isReq = req.has(k);
+      const dflt = p.default !== undefined ? JSON.stringify(p.default) : '';
+      return '<tr>'+
+        '<td class="name">'+esc(k)+'</td>'+
+        '<td class="type">'+esc(typeLabel(p))+'</td>'+
+        '<td class="flag"><span class="pill '+(isReq?'r':'o')+'">'+(isReq?'required':'optional')+'</span></td>'+
+        '<td class="dflt">'+(dflt ? esc(dflt) : '<span style="color:var(--text-faint)">&mdash;</span>')+'</td>'+
+        '<td class="desc">'+esc(p.description || '')+'</td>'+
+      '</tr>';
+    }).join('')+
+    '</tbody></table></div></div>';
+}
+
+(async function loadSchemas(){
+  const host = $('#schemaHost');
+  try{
+    const r = await fetch('/openapi.json', {cache:'no-store'});
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    const spec = await r.json();
+
+    const eps = [];
+    Object.entries(spec.paths||{}).forEach(([path, ops])=>{
+      Object.entries(ops).forEach(([verb, op])=>{
+        if (!['get','post','put','patch','delete'].includes(verb)) return;
+        eps.push('<div class="ep">'+
+          '<span class="verb '+verb+'" style="font-family:var(--mono)">'+verb.toUpperCase()+'</span>'+
+          '<span class="path">'+esc(path)+'</span>'+
+          '<span class="sum">'+esc(op.summary || op.description || '')+'</span>'+
+        '</div>');
+      });
+    });
+
+    const schemas = spec.components && spec.components.schemas || {};
+    const order = ['SFRRequest','SFRResponse','SFRAgentResponse','HealthResponse',
+                   'TicketPriority','TriageDecision'];
+    const names = Object.keys(schemas).sort((a,b)=>{
+      const ia = order.indexOf(a), ib = order.indexOf(b);
+      return (ia<0?99:ia) - (ib<0?99:ib) || a.localeCompare(b);
+    });
+
+    host.innerHTML =
+      '<div class="card"><p class="out-label" style="margin-bottom:14px">Endpoints</p>'+
+        '<div class="ep-list" style="margin:0">'+eps.join('')+'</div></div>'+
+      '<div class="card" style="margin-top:20px">'+
+        '<p class="out-label" style="margin-bottom:18px">Models</p>'+
+        names.map(n => schemaTable(n, schemas[n], spec)).join('')+
+      '</div>';
+  }catch(err){
+    host.innerHTML = '<div class="card">'+notice('err','!',
+      'Could not load <code>/openapi.json</code> — '+esc(err.message)+'.')+'</div>';
+  }
+})();
+
+/* initial liveness check */
+ping(true);
+})();
+</script>
+</body>
+</html>

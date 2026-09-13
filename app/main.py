@@ -11,9 +11,12 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.agent.graph import ainvoke_agent_traced, get_sfr_agent
 from app.chain import active_model_id, ainvoke_sfr_traced, get_sfr_chain
@@ -211,3 +214,22 @@ async def generate_agent_response(request: SFRRequest) -> SFRAgentResponse:
 async def health_check() -> HealthResponse:
     """Health check for load balancer and monitoring."""
     return HealthResponse(version=settings.app_version)
+
+
+# ── Console UI ──────────────────────────────────────────────────────────────
+# Served from the app itself rather than a separate static host: same origin, so
+# the page calls the API with no CORS round trip, and it ships in the same image
+# with no second deploy target to keep in sync.
+#
+# Mounted last. A mount claims every path beneath it, so mounting "/" before the
+# routes above would shadow them.
+STATIC_DIR = Path(__file__).parent / "static"
+
+if STATIC_DIR.is_dir():
+    @app.get("/", include_in_schema=False)
+    async def root() -> RedirectResponse:
+        return RedirectResponse(url="/ui/")
+
+    app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
+else:  # pragma: no cover - only hit if the image was built without app/static
+    logger.warning("static/ not found at %s — console UI disabled", STATIC_DIR)
