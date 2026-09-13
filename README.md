@@ -8,13 +8,13 @@
 ## Live Demo
 
 **Interactive API docs:**
-https://vis-smart-first-response-system-production.up.railway.app/docs
+https://h9ye12u7wg.execute-api.us-east-1.amazonaws.com/docs
 
 No setup required — open the Swagger UI, click *Try it out*, and send a real
 ticket through a live LLM.
 
 ```bash
-curl -X POST https://vis-smart-first-response-system-production.up.railway.app/api/v1/generate-response \
+curl -X POST https://h9ye12u7wg.execute-api.us-east-1.amazonaws.com/api/v1/generate-response \
   -H "Content-Type: application/json" \
   -d '{
     "ticket_id": "TKT-001",
@@ -137,7 +137,7 @@ async for token in chain.astream({"ticket_content": ticket}):
 | LLM | Amazon Bedrock (Claude 3 Sonnet) | Generate first responses |
 | Validation | Pydantic | Request/response schema enforcement |
 | Agent routing | LangGraph | Triage a ticket before answering it |
-| Deployment | Docker → Railway | Containerised serving, deployed from `main` |
+| Deployment | Docker → AWS Lambda | Container image behind API Gateway, deployed from `main` |
 
 ## Triage Agent
 
@@ -176,11 +176,11 @@ no clarify loop: [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
 
 | | Local dev | Demo (deployed) | Production |
 |---|---|---|---|
-| LLM provider | Ollama (`llama3.2`) | Groq (`llama-3.1-8b-instant`) | AWS Bedrock (Claude 3 Sonnet) |
+| LLM provider | Ollama (`llama3.2`) | Groq (`openai/gpt-oss-20b`) | AWS Bedrock (Claude 3 Sonnet) |
 | Selected by | `auto` — boto3 credential probe | `LLM_PROVIDER=groq` | AWS credentials present |
-| Runtime | uvicorn | Railway (Docker) | ECS / K8s |
+| Runtime | uvicorn | AWS Lambda (Mangum) + API Gateway | ECS / K8s |
 
-Same codebase, same Dockerfile, different environment variables. Provider
+Same codebase, different environment variables. Provider
 selection lives in `resolve_provider()`: an explicit `LLM_PROVIDER` always wins,
 and `auto` probes for credentials through boto3 itself rather than checking
 `AWS_*` environment variables — because `aws configure` writes to
@@ -188,11 +188,19 @@ and `auto` probes for credentials through boto3 itself rather than checking
 on the most common local setup.
 
 The deployed demo sets `LLM_PROVIDER=groq` explicitly rather than relying on
-`auto`. With no credentials present, boto3 walks its full credential chain down
-to the EC2 instance-metadata endpoint, which does not exist on Railway — so
-`auto` both slows startup and silently selects a provider that cannot serve a
-request. Groq itself is the right fit for a public demo: hosted inference on a
-free tier, no AWS account, and no GPU to pay for.
+`auto`. On Lambda that is not a nicety: the execution role always resolves
+through boto3's credential chain, so `auto` would select Bedrock every time. The
+role carries no `bedrock:InvokeModel` permission, so each request would fail at
+the model call rather than at startup — the worst place to discover it. Groq is
+the right fit for a public demo anyway: hosted inference on a free tier, and no
+GPU to pay for.
+
+The Groq key is never stored in the function's configuration. `Dockerfile.lambda`
+builds on the AWS Lambda Python base image, and `app/lambda_handler.py` fetches
+the key from SSM Parameter Store (`/sfr/GROQ_API_KEY`, a `SecureString`) on cold
+start, before `app.main` is imported — `Settings` reads the environment at import
+time, so the order matters. Rotating the key is a Parameter Store write plus a
+function restart; no rebuild, and no secret in the console.
 
 A fourth provider, `fake`, returns canned responses with no model call at all.
 It exists so the tracing and eval harnesses — and CI — can run with no network
@@ -207,12 +215,37 @@ platform routes traffic only once the app actually responds. `CMD` uses
 without it the shell swallows the signal and in-flight requests are severed on
 every redeploy.
 
+There are two images, because Lambda does not run a web server — it invokes a
+handler. `Dockerfile` is the uvicorn image used locally, by `docker compose`, and
+by any container platform. `Dockerfile.lambda` builds on the AWS base image that
+ships the Runtime Interface Client, and its `CMD` names the Mangum handler
+instead of a server command. `app/` is identical in both.
+
 Local stack:
 
 ```bash
 docker compose up --build      # service on :8000, health check every 30s
 docker compose down
 ```
+
+Redeploy to Lambda:
+
+```bash
+ECR=<account>.dkr.ecr.us-east-1.amazonaws.com/sfr-lambda
+
+docker buildx build --platform linux/amd64 \
+  --provenance=false --sbom=false \
+  --output type=image,oci-mediatypes=false,push=true \
+  -f Dockerfile.lambda -t $ECR:latest .
+
+aws lambda update-function-code --function-name sfr-api \
+  --image-uri $ECR:latest --region us-east-1
+```
+
+The three build flags are load-bearing. BuildKit attaches provenance and SBOM
+attestations by default, which forces an OCI image index; Lambda accepts only
+Docker Image Manifest V2 Schema 2 and rejects the push with a media-type error
+that names neither attestations nor the fix.
 
 ## CI/CD
 
@@ -221,9 +254,11 @@ ruff check  →  pytest (80% coverage gate)  →  Docker build verification
 ```
 
 `main` is protected: lint, tests and the Docker build must all pass before a pull
-request can merge. Railway deploys what lands on `main`, so only tested code
-reaches the live service — one deploy trigger, not two, and it fires on merges
-rather than on every push.
+request can merge, so only reviewed code reaches `main`. The Lambda deploy is
+manual — the commands above — which keeps the live demo on a deliberate push
+rather than on every merge. Note that CI builds `Dockerfile`, not
+`Dockerfile.lambda`, so a change that breaks only the Lambda image passes CI;
+the redeploy is where that surfaces.
 
 Tests run against the `fake` provider, so CI needs no API keys and makes no
 network calls. Both `ruff` and its rule set are pinned (`ruff.toml`,
