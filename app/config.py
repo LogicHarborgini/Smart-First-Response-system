@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     )
 
     groq_model: str = Field(
-        default="llama-3.1-8b-instant",
+        default="openai/gpt-oss-20b",
         description="Groq model, used when llm_provider resolves to groq"
     )
 
