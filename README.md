@@ -2,22 +2,26 @@
 
 ![CI/CD](https://github.com/LogicHarborgini/Smart-First-Response-system/actions/workflows/ci-cd.yml/badge.svg)
 
-> LLM application that automatically generates the first customer response
+> An LLM application that automatically generates an initial customer response
 > for enterprise support tickets using LangChain and Amazon Bedrock.
 
 ## Live Demo
 
-**Console:**
-https://h9ye12u7wg.execute-api.us-east-1.amazonaws.com/ui/
+**Console:** https://h9ye12u7wg.execute-api.us-east-1.amazonaws.com/ui/
 
-No setup required — pick one of the example tickets, send it, and watch a live
-LLM answer it. Four tabs: the plain chain, the triage agent (with the route it
-took and why), a health probe, and the request/response schemas read live from
-`/openapi.json`.
+No setup is required. Select one of the example tickets, submit it, and view the
+generated LLM response.
 
-Raw Swagger UI is still at
-[`/docs`](https://h9ye12u7wg.execute-api.us-east-1.amazonaws.com/docs) if you
-would rather drive the API directly.
+The console includes four tabs:
+
+* The standard generation chain
+* The triage agent, including the route selected and its reasoning
+* A health probe
+* Request and response schemas loaded from `/openapi.json`
+
+The raw Swagger UI is also available at
+[`/docs`](https://h9ye12u7wg.execute-api.us-east-1.amazonaws.com/docs) for direct
+API interaction.
 
 ```bash
 curl -X POST https://h9ye12u7wg.execute-api.us-east-1.amazonaws.com/api/v1/generate-response \
@@ -30,80 +34,93 @@ curl -X POST https://h9ye12u7wg.execute-api.us-east-1.amazonaws.com/api/v1/gener
   }'
 ```
 
-Swap the path for `/api/v1/generate-response/agent` to route the same ticket
-through the [triage agent](#triage-agent) instead, which decides whether to
-answer it, ask a question, or escalate it to a human.
+To use the triage workflow, replace the path with
+`/api/v1/generate-response/agent`. The [agent](#triage-agent) first evaluates the
+ticket and determines whether to respond automatically, request clarification, or
+escalate to a human.
 
-The deployed demo runs on Groq rather than Bedrock — see [Deployment](#deployment)
-for why, and for how the provider is selected without a code change.
+The deployed demo currently uses Groq instead of Bedrock. The
+[Deployment](#deployment) section explains the reasoning and how the provider is
+selected without requiring code changes.
 
 ## Problem Statement
 
-Support engineers at enterprise companies spend 5–10 minutes drafting the initial
-response for every new ticket. This time compounds across hundreds of daily tickets.
+Enterprise support engineers may spend several minutes preparing the initial
+response to a new ticket. When this happens across a high volume of daily
+tickets, the time spent on these responses can add up significantly.
 
-**Smart First Response System** eliminates this using LangChain and Amazon Bedrock
-to automatically generate the first customer response from ticket content —
-reducing initial response time from minutes to seconds.
+**Smart First Response System** is designed to reduce this initial response time
+by using LangChain and a hosted LLM to generate a first response from the current
+ticket context.
 
-**This is an LLM application, not a RAG system.** It generates responses from
-the current ticket content using prompt engineering and LLM inference. It does
-not retrieve from a knowledge base.
+### LLM Application, Not RAG
 
-The companion project
-[past-ticket-knowledge-rag](https://github.com/LogicHarborgini/past-ticket-knowledge-rag)
-is the retrieval case: it answers "how was this fixed before?" by searching
-resolved tickets and grounding its answer in what it finds. The two are
-deliberately separate because the failure modes are not the same — a wrong first
-response is a generation problem and nothing else, while a wrong retrieved answer
-is either bad retrieval or bad generation, and telling those apart drives most of
-the design in that repo.
+This project is intentionally designed as an LLM generation application rather
+than a RAG system. Responses are generated from the current ticket content
+through prompt engineering and LLM inference; the application does not retrieve
+information from a knowledge base.
+
+The companion project,
+[past-ticket-knowledge-rag](https://github.com/LogicHarborgini/past-ticket-knowledge-rag),
+addresses the retrieval use case: answering questions such as *"How was this
+issue resolved previously?"* by searching previously resolved tickets and
+grounding the response in retrieved information.
+
+Keeping the two use cases separate makes it easier to evaluate their different
+failure modes. In this project, the primary concern is the quality of generated
+responses, while the RAG system introduces additional retrieval-quality
+considerations.
 
 ## Architecture
 
+```text
+                       SFR — Smart First Response
+                     LLM Application (no retrieval)
+
+    Support Engineer
+            │
+            │  1. New support ticket
+            ▼
+  ┌───────────────────┐      ┌───────────────────────┐      ┌─────────────────────┐
+  │      FastAPI      │      │     LangChain LCEL    │      │   Amazon Bedrock    │
+  │                   │      │                       │      │                     │
+  │   POST /api/v1/   │─────▶   ChatPromptTemplate   ─────▶│   Claude 3 Sonnet   │
+  │ generate-response │      │      ChatBedrock      │      │  (claude-3-sonnet-  │
+  │                   │◀─────    StrOutputParser     ◀─────│   20240229-v1:0)    │
+  │ Pydantic schemas  │      │                       │      │                     │
+  └───────────────────┘      └───────────────────────┘      └─────────────────────┘
+            │
+            │  2. First response
+            ▼
+    Support Engineer
 ```
-                        SFR — Smart First Response
-                        LLM Application (Not RAG)
 
-   Support Engineer                                    Amazon Bedrock
-       │                                                    │
-       │  New Support Ticket                                │
-       ▼                                                    │
- ┌─────────────┐    ┌──────────────────┐    ┌──────────────┴──────────┐
- │  FastAPI    │───▶│  LangChain LCEL  │───▶│  Claude 3 Sonnet        │
- │  POST /api  │    │                  │    │  (claude-3-sonnet-      │
- │  /generate  │    │  Prompt Template │    │   20240229-v1:0)        │
- └─────────────┘    │       +          │    └──────────────┬──────────┘
-                    │  ChatBedrock     │                   │
-                    │       +          │    Generated      │
-                    │  StrOutputParser │◀──  Response  ────┘
-                    └──────────────────┘
-                             │
-                             ▼
-                    First Response Delivered
-                    to Support Engineer
-```
+### Flow
 
-**Flow**
+1. A support engineer receives a new support ticket.
+2. The ticket content is sent to the FastAPI endpoint and validated by Pydantic.
+3. LangChain constructs the prompt using system context and ticket content.
+4. `ChatBedrock` invokes Claude 3 Sonnet through Amazon Bedrock.
+5. `StrOutputParser` extracts the generated response.
+6. The first response is returned to the support engineer.
 
-1. Engineer receives new support ticket
-2. Ticket content sent to FastAPI endpoint
-3. LangChain formats prompt: system context + ticket content
-4. ChatBedrock invokes Claude 3 Sonnet on Amazon Bedrock
-5. StrOutputParser extracts response text
-6. First response returned to engineer
+### Key Design Decisions
 
-**Key Design Decisions**
-
-- No retrieval (not RAG): response generated purely from ticket context + LLM knowledge
-- LangChain LCEL pipe syntax: `prompt | llm | parser`
-- Amazon Bedrock: managed LLM service, no GPU infrastructure to maintain
-- Credentials resolved from the boto3 credential chain, never from app config
-- Transient provider failures retried with exponential backoff and jitter (see Reliability)
+* **No retrieval (not RAG):** The response is generated using the current ticket
+  context and the LLM.
+* **LangChain LCEL:** Uses the `prompt | llm | parser` composition pattern.
+* **Amazon Bedrock:** Provides managed model access without requiring
+  application-managed GPU infrastructure.
+* **Secure credential resolution:** AWS credentials are resolved through the
+  standard boto3 credential chain rather than being stored in application
+  configuration.
+* **Reliability:** Transient provider failures are retried using exponential
+  backoff and jitter.
 
 ## Core Implementation
 
-The SFR chain is built with LangChain LCEL (LangChain Expression Language):
+The SFR chain is implemented using LangChain LCEL (LangChain Expression
+Language):
 
 ```python
 from langchain_aws import ChatBedrock
@@ -123,118 +140,145 @@ llm = ChatBedrock(
     streaming=True
 )
 
-# Build the chain — the | operator wires the components together
+# Build the chain
 chain = prompt | llm | StrOutputParser()
 
-# Async invocation for FastAPI (non-blocking)
+# Async invocation for FastAPI
 response = await chain.ainvoke({"ticket_content": ticket})
 
 # Streaming invocation for real-time token delivery
 async for token in chain.astream({"ticket_content": ticket}):
-    yield token  # deliver each word as it arrives
+    yield token
 ```
 
-**Tech Stack**
+### Tech Stack
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| API Layer | FastAPI (async) | Expose SFR as an HTTP service |
-| LLM Orchestration | LangChain LCEL | Chain prompt → LLM → parser |
-| LLM | Amazon Bedrock (Claude 3 Sonnet) | Generate first responses |
-| Validation | Pydantic | Request/response schema enforcement |
-| Agent routing | LangGraph | Triage a ticket before answering it |
-| Deployment | Docker → AWS Lambda | Container image behind API Gateway, deployed from `main` |
+| Component         | Technology                       | Purpose                                       |
+| ----------------- | -------------------------------- | --------------------------------------------- |
+| API Layer         | FastAPI (async)                  | Expose SFR as an HTTP service                 |
+| LLM Orchestration | LangChain LCEL                   | Chain prompt → LLM → parser                   |
+| LLM               | Amazon Bedrock (Claude 3 Sonnet) | Generate first responses                      |
+| Validation        | Pydantic                         | Request/response schema enforcement           |
+| Agent Routing     | LangGraph                        | Triage a ticket before generating a response  |
+| Deployment        | Docker → AWS Lambda              | Container-based deployment behind API Gateway |
 
 ## Triage Agent
 
-The chain above answers every ticket it receives — including the ones that
-should not be answered. `POST /api/v1/generate-response/agent` classifies first
-and routes on the result:
+The standard endpoint generates a response for every ticket it receives. The
+triage endpoint introduces an additional decision step so that tickets requiring
+clarification or human involvement can be handled differently.
 
+`POST /api/v1/generate-response/agent` evaluates the ticket first and routes it
+based on the result:
+
+```text
+START ─→ triage ─┬─ auto_respond ─────────→ respond  ─→ END
+                 ├─ needs_clarification ──→ clarify  ─→ END
+                 └─ escalate ─────────────→ escalate ─→ END
 ```
-START → triage ─┬─ auto_respond ────────→ respond   → END
-                ├─ needs_clarification ─→ clarify   → END
-                └─ escalate ───────────→ escalate  → END
-```
 
-| Decision | Populated field | Meaning |
-|---|---|---|
-| `auto_respond` | `first_response` | Clear enough to acknowledge now — same generation the plain endpoint produces |
-| `needs_clarification` | `clarifying_question` | Too vague to reply to; one question is worth more than any answer |
-| `escalate` | `escalation_summary` | Data loss, suspected breach, legal threat, or a P1 where automation would read as dismissive — internal handoff note for a human |
+| Decision              | Populated Field       | Meaning                                                                                                                                                                                       |
+| --------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auto_respond`        | `first_response`      | The ticket contains enough information for an initial response.                                                                                                                               |
+| `needs_clarification` | `clarifying_question` | Additional information is needed before providing a meaningful response.                                                                                                                      |
+| `escalate`            | `escalation_summary`  | The ticket should be reviewed by a human, such as in cases involving data loss, a suspected security issue, legal concerns, or a high-priority incident where automation may be inappropriate. |
 
-Every triage failure — unparseable JSON, an unknown decision value, a dead
-provider — resolves to `escalate` with confidence `0.0` and a reasoning string
-saying which failure fired. A ticket wrongly sent to a human costs a minute; a
-wrong automated reply during a security incident cannot be taken back.
+For safety and reliability, triage failures such as invalid JSON, unknown
+decision values, or unavailable providers default to `escalate` with confidence
+`0.0` and a reasoning message describing the failure.
 
-The response carries `node_path` (e.g. `["triage", "escalate"]`), so the route
-taken is auditable without opening LangSmith.
+The response also includes `node_path`, for example `["triage", "escalate"]`,
+making the selected route easy to review without requiring access to LangSmith.
 
-Both endpoints are kept. The agent costs two model calls to the plain
-endpoint's one and can decline to answer — worth it when the ticket is not known
-to be answerable, wasteful when it is.
+Both endpoints remain available because they serve different use cases. The
+standard endpoint requires a single model call, while the triage workflow adds a
+classification step that can determine when automation should not proceed.
 
-Full design notes, including why triage runs at temperature 0 and why there is
-no clarify loop: [AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
+For additional design details, including the reasoning behind the temperature
+setting and the absence of a clarification loop, see
+[AGENT_ARCHITECTURE.md](AGENT_ARCHITECTURE.md).
 
 ## Deployment
 
-| | Local dev | Demo (deployed) | Production |
-|---|---|---|---|
-| LLM provider | Ollama (`llama3.2`) | Groq (`openai/gpt-oss-20b`) | AWS Bedrock (Claude 3 Sonnet) |
-| Selected by | `auto` — boto3 credential probe | `LLM_PROVIDER=groq` | AWS credentials present |
-| Runtime | uvicorn | AWS Lambda (Mangum) + API Gateway | ECS / K8s |
+|                    | Local Development               | Demo                              | Production                    |
+| ------------------ | ------------------------------- | --------------------------------- | ----------------------------- |
+| LLM Provider       | Ollama (`llama3.2`)             | Groq (`openai/gpt-oss-20b`)       | AWS Bedrock (Claude 3 Sonnet) |
+| Provider Selection | `auto` — boto3 credential probe | `LLM_PROVIDER=groq`               | AWS credentials               |
+| Runtime            | uvicorn                         | AWS Lambda (Mangum) + API Gateway | ECS / Kubernetes              |
 
-Same codebase, different environment variables. Provider
-selection lives in `resolve_provider()`: an explicit `LLM_PROVIDER` always wins,
-and `auto` probes for credentials through boto3 itself rather than checking
-`AWS_*` environment variables — because `aws configure` writes to
-`~/.aws/credentials` and sets no env vars, so an env-var check reports "no AWS"
-on the most common local setup.
+The same codebase supports multiple deployment environments through
+environment-based provider selection.
 
-The deployed demo sets `LLM_PROVIDER=groq` explicitly rather than relying on
-`auto`. On Lambda that is not a nicety: the execution role always resolves
-through boto3's credential chain, so `auto` would select Bedrock every time. The
-role carries no `bedrock:InvokeModel` permission, so each request would fail at
-the model call rather than at startup — the worst place to discover it. Groq is
-the right fit for a public demo anyway: hosted inference on a free tier, and no
-GPU to pay for.
+Provider resolution is handled by `resolve_provider()`. An explicit
+`LLM_PROVIDER` value takes precedence, while `auto` uses boto3's credential chain
+to determine whether AWS credentials are available. The credential chain is
+probed directly rather than checking `AWS_*` environment variables, because
+`aws configure` writes to `~/.aws/credentials` without setting environment
+variables.
 
-The Groq key is never stored in the function's configuration. `Dockerfile.lambda`
-builds on the AWS Lambda Python base image, and `app/lambda_handler.py` fetches
-the key from SSM Parameter Store (`/sfr/GROQ_API_KEY`, a `SecureString`) on cold
-start, before `app.main` is imported — `Settings` reads the environment at import
-time, so the order matters. Rotating the key is a Parameter Store write plus a
-function restart; no rebuild, and no secret in the console.
+The deployed demo explicitly sets `LLM_PROVIDER=groq`. This avoids automatically
+selecting Bedrock through the Lambda execution role when the demo environment is
+not configured with Bedrock permissions.
 
-A fourth provider, `fake`, returns canned responses with no model call at all.
-It exists so the tracing and eval harnesses — and CI — can run with no network
-access, no API cost, and no flakiness from a third-party model being slow or
-rate-limited.
+### Secret Management
 
-**Container:** multi-stage build, 563MB. Build tooling (`build-essential`) lives
-only in the builder stage and never reaches the runtime image. The container runs
-as a non-root user (`appuser`, uid 1000) and declares a `HEALTHCHECK` so the
-platform routes traffic only once the app actually responds. `CMD` uses
-`exec uvicorn` so uvicorn becomes PID 1 and receives `SIGTERM` directly —
-without it the shell swallows the signal and in-flight requests are severed on
-every redeploy.
+The Groq API key is not stored directly in the function configuration.
+`Dockerfile.lambda` uses the AWS Lambda Python base image, while
+`app/lambda_handler.py` retrieves the key from AWS Systems Manager Parameter
+Store (`/sfr/GROQ_API_KEY`, a `SecureString`).
 
-There are two images, because Lambda does not run a web server — it invokes a
-handler. `Dockerfile` is the uvicorn image used locally, by `docker compose`, and
-by any container platform. `Dockerfile.lambda` builds on the AWS base image that
-ships the Runtime Interface Client, and its `CMD` names the Mangum handler
-instead of a server command. `app/` is identical in both.
+The parameter is loaded during cold start before `app.main` is imported, ensuring
+that the application settings are available when the module initializes.
 
-Local stack:
+This also allows the key to be rotated through Parameter Store without requiring
+an image rebuild or storing the secret directly in the deployment configuration.
+
+### Fake Provider
+
+A fourth provider, `fake`, returns deterministic responses without making a model
+call.
+
+It is primarily intended for automated tests, tracing, and evaluation workflows
+where external network access, API credentials, latency, and provider rate limits
+are undesirable.
+
+### Container
+
+The production-oriented container uses a multi-stage build with a final image
+size of approximately 563 MB.
+
+Build tooling such as `build-essential` is kept in the builder stage and is not
+included in the runtime image.
+
+The container runs as a non-root user (`appuser`, UID 1000) and defines a
+`HEALTHCHECK` so the platform can verify application readiness.
+
+The `CMD` uses `exec uvicorn`, allowing uvicorn to run as PID 1 and receive
+termination signals directly.
+
+### Lambda and Local Images
+
+Two Dockerfiles are maintained because Lambda and standard container environments
+use different execution models:
+
+* `Dockerfile` is used for local development, Docker Compose, and standard
+  container platforms.
+* `Dockerfile.lambda` is based on the AWS Lambda Python image and uses the Lambda
+  Runtime Interface Client with the Mangum handler.
+
+The application code under `app/` remains shared between both images.
+
+### Local Stack
 
 ```bash
-docker compose up --build      # service on :8000, health check every 30s
+docker compose up --build
 docker compose down
 ```
 
-Redeploy to Lambda:
+The application is exposed on port `8000`, with a health check running every
+30 seconds.
+
+### Redeploy to Lambda
 
 ```bash
 ECR=<account>.dkr.ecr.us-east-1.amazonaws.com/sfr-lambda
@@ -248,139 +292,165 @@ aws lambda update-function-code --function-name sfr-api \
   --image-uri $ECR:latest --region us-east-1
 ```
 
-The three build flags are load-bearing. BuildKit attaches provenance and SBOM
-attestations by default, which forces an OCI image index; Lambda accepts only
-Docker Image Manifest V2 Schema 2 and rejects the push with a media-type error
-that names neither attestations nor the fix.
+The BuildKit flags above are required for the Lambda image workflow because
+provenance and SBOM attestations can result in an OCI image index that is not
+accepted by the Lambda container image deployment path.
 
 ## CI/CD
 
-```
+```text
 ruff check  →  pytest (80% coverage gate)  →  Docker build verification
 ```
 
-`main` is protected: lint, tests and the Docker build must all pass before a pull
-request can merge, so only reviewed code reaches `main`. The Lambda deploy is
-manual — the commands above — which keeps the live demo on a deliberate push
-rather than on every merge. Note that CI builds `Dockerfile`, not
-`Dockerfile.lambda`, so a change that breaks only the Lambda image passes CI;
-the redeploy is where that surfaces.
+The `main` branch is protected so that linting, tests, and Docker build
+verification must pass before a pull request can be merged.
 
-Tests run against the `fake` provider, so CI needs no API keys and makes no
-network calls. Both `ruff` and its rule set are pinned (`ruff.toml`,
-`RUFF_VERSION`) for the same reason `requirements.txt` carries version ceilings:
-a new release of a tool must not be able to fail the build on its own. CI runs
-Python 3.12 to match the container's base image rather than whatever version is
-installed locally.
+Lambda deployment remains a deliberate manual step, allowing the live demo to be
+updated intentionally rather than after every merge.
+
+CI currently validates `Dockerfile`. Because `Dockerfile.lambda` is built
+separately, Lambda-specific Docker issues may only become apparent during the
+deployment workflow.
+
+Tests use the `fake` provider, allowing CI to run without API keys, external
+network requests, or third-party model dependencies.
+
+Tooling versions are pinned to reduce build variability, and CI uses Python 3.12
+to match the container base image.
 
 ## Reliability
 
-Bedrock returns `ThrottlingException` under load. Without a retry that is a 503
-to the support engineer, at exactly the moment ticket volume is highest — so the
-model step is wrapped in three attempts with exponential backoff and jitter:
+Model providers can return transient errors such as throttling during periods of
+increased demand. To improve resilience, the model invocation is configured with
+three attempts using exponential backoff and jitter:
 
 ```python
 chain = prompt | llm.with_retry(
     retry_if_exception_type=(ClientError, BotoConnectionError),
-    wait_exponential_jitter=True,   # 1s, 2s + random offset
+    wait_exponential_jitter=True,
     stop_after_attempt=3,
 ) | parser
 ```
 
-Two deliberate choices:
+### Retry Strategy
 
-- **Only the model step is wrapped.** A parser failure is not worth another call
-  to Bedrock.
-- **Only transient exception types are retried.** A `KeyError` from a missing
-  prompt variable fails identically three times, so a blanket retry buys nothing
-  but a slower error and a hidden bug. The retryable set is chosen per provider:
-  botocore errors on Bedrock, connection and timeout errors on Ollama, none on
-  `fake`.
+Two principles guide the retry configuration:
 
-Jitter is what makes this safe under concurrency. Without it every request
-throttled in the same second retries in the same second, reproducing the burst
-that caused the throttle.
+* **Only the model invocation is retried.** Parser failures do not trigger
+  another model request.
+* **Only transient failures are retried.** Configuration and programming errors
+  should fail directly rather than being retried repeatedly.
 
-One limitation worth stating: botocore raises `ClientError` for throttling
-(retryable) and for `AccessDenied` (not), and `with_retry` filters on exception
-type with no hook for the error code. A misconfigured IAM role therefore costs
-three attempts before the real error surfaces — the cheaper side of the trade,
-since the alternative is not retrying throttles at all.
+Retryable exception types are provider-specific. Bedrock uses botocore
+exceptions, while Ollama uses connection and timeout-related failures. The `fake`
+provider does not require retries.
 
-The eval judge in `evals/sfr_eval.py` uses the same policy. It fires once per
-criterion per example, making it the most-throttled model in the project, and a
-throttled judge does not score 0 — it errors the evaluator and leaves a hole in
-the experiment.
+Jitter helps reduce synchronized retry bursts when multiple requests are
+throttled at the same time.
+
+One known limitation is that botocore uses `ClientError` for multiple AWS failure
+conditions. Because the retry policy is based on exception type rather than the
+specific AWS error code, certain non-transient configuration issues, such as
+`AccessDenied`, may also be attempted three times before the underlying error is
+surfaced.
+
+The evaluation judge follows the same reliability principles. A throttled judge
+invocation results in an evaluator error rather than being interpreted as a
+failed score.
 
 ## Observability
 
-Every chain execution is traced via LangSmith. Copy `.env.example` to `.env` and
-set:
+Every chain execution can be traced through LangSmith.
 
-```
+Copy `.env.example` to `.env` and configure:
+
+```text
 LANGSMITH_TRACING=true
 LANGSMITH_API_KEY=lsv2_pt_your_key_here
 LANGSMITH_PROJECT=sfr-support-assistant
 ```
 
-Set `LANGSMITH_TRACING=false` to disable tracing without removing the key. The
-app runs identically either way — `langsmith_run_id` in the response is simply
-`null`.
+Tracing can be disabled by setting:
 
-Each trace carries:
+```text
+LANGSMITH_TRACING=false
+```
 
-| Field | Purpose |
-|-------|---------|
-| `run_name` = `SFR-<ticket_id>` | Identifies the trace at a glance instead of `RunnableSequence` |
-| metadata: ticket ID, priority, customer, model ID, app version | Filter and group traces |
-| tags: `priority:P1`, `sfr` | Saved views for critical tickets |
-| `preprocess-ticket` span | Separates preprocessing cost from model latency |
+The application continues to operate normally, with `langsmith_run_id` returned
+as `null`.
 
-The API returns the trace ID as `langsmith_run_id`, so a ticket in your own
-records can be matched back to the exact model call that produced its response.
+### Trace Metadata
 
-Generate sample traces:
+Each trace contains:
+
+| Field                        | Purpose                                                          |
+| ---------------------------- | ---------------------------------------------------------------- |
+| `run_name = SFR-<ticket_id>` | Provides an easily recognizable trace name                       |
+| Metadata                     | Ticket ID, priority, customer, model ID, and application version |
+| Tags                         | Filters such as `priority:P1` and `sfr`                          |
+| `preprocess-ticket` span     | Separates preprocessing time from model latency                  |
+
+The API also returns the LangSmith trace ID as `langsmith_run_id`, making it
+possible to correlate an application request with the model execution that
+generated the response.
+
+Generate sample traces with:
 
 ```bash
 python run_sfr_traces.py
 ```
 
-See [OBSERVABILITY_NOTES.md](OBSERVABILITY_NOTES.md) for what the traces showed —
-measured offline where that is possible, and left as explicit questions where it
-needs a real provider.
+Additional findings and measured observations are documented in
+[OBSERVABILITY_NOTES.md](OBSERVABILITY_NOTES.md).
 
 ## Evaluation
 
-Two harnesses, run from the project root:
+Two evaluation harnesses are available from the project root:
 
 ```bash
-python -m evals.simple_eval    # deterministic checks, no API key or judge model
-python -m evals.sfr_eval       # LangSmith golden dataset + LLM-as-judge
+python -m evals.simple_eval
+python -m evals.sfr_eval
 ```
 
-`simple_eval` is the regression gate. It scores responses against deterministic
-criteria and writes `evals/baseline_results.json`; rerun it after any prompt or
-model change and it reports whether the score moved. Criteria that only apply to
-some tickets are skipped rather than failed — urgency language is required on P1
-and not expected on P3.
+### Deterministic Evaluation
 
-`sfr_eval` handles the judgement calls deterministic checks cannot: whether a
-response is genuinely specific to the ticket, whether its urgency matches the
-priority, and whether it resists diagnosing the problem in a first response.
+`simple_eval` provides a lightweight regression check without requiring an API
+key or judge model.
 
-The judge runs at temperature 0 on whichever provider `LLM_PROVIDER` resolves to
-— never the OpenAI default that `LangChainStringEvaluator` would pull in, so no
-OpenAI credentials are needed. Judge strength varies by provider, and so does how
-much the scores are worth:
+It evaluates responses against deterministic criteria and writes results to:
 
-| Provider | Judge | Scores mean |
-|---|---|---|
-| `bedrock` | Claude 3 Haiku (`JUDGE_MODEL_ID`) | Trustworthy — use as the quality gate |
-| `ollama` | Local model (`JUDGE_OLLAMA_MODEL`) | Indicative only; a 3B model follows rubrics loosely and often breaks the JSON contract |
-| `fake` | Canned verdict | Nothing — proves the harness runs, no more |
+```text
+evals/baseline_results.json
+```
 
-## Note
+This can be rerun after prompt or model changes to identify changes in the
+evaluation score.
 
-A reference implementation built to explore production patterns in support
-automation. Contains no proprietary code or data — all example tickets are
-synthetic.
+Criteria are applied according to ticket context. For example, urgency language
+is expected for P1 tickets but is not required for lower-priority tickets.
+
+### LLM-as-Judge Evaluation
+
+`sfr_eval` is used for evaluation criteria that are difficult to capture with
+deterministic rules, such as:
+
+* Whether the response is specific to the ticket
+* Whether the response reflects the ticket priority appropriately
+* Whether the response avoids prematurely diagnosing the underlying issue
+
+The judge runs at temperature `0` and uses the provider selected through
+`LLM_PROVIDER`.
+
+| Provider  | Judge                              | Interpretation                                                                         |
+| --------- | ---------------------------------- | -------------------------------------------------------------------------------------- |
+| `bedrock` | Claude 3 Haiku (`JUDGE_MODEL_ID`)  | Intended for higher-confidence evaluation                                              |
+| `ollama`  | Local model (`JUDGE_OLLAMA_MODEL`) | Useful for local experimentation; results should be treated as indicative              |
+| `fake`    | Canned verdict                     | Validates that the evaluation workflow executes, but does not measure response quality |
+
+## Project Note
+
+This repository is a reference implementation created to explore
+production-oriented patterns for LLM-based support automation.
+
+It contains no proprietary code or customer data. All example tickets and
+supporting data are synthetic.
